@@ -104,7 +104,7 @@ if (require.main === module) {
       const address = server.address();
       const actualHost = address && typeof address === 'object' ? address.address : config.host;
       const actualPort = address && typeof address === 'object' ? address.port : config.port;
-      console.log(`Todu server running on http://${actualHost}:${actualPort}`);
+      console.log(`Rili server running on http://${actualHost}:${actualPort}`);
     })
     .catch((error) => {
       console.error(error);

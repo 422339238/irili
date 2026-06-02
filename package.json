@@ -1,7 +1,7 @@
 {
-  "name": "todu",
+  "name": "rili",
   "version": "1.0.0",
-  "description": "A simple todo-list app",
+  "description": "A self-hosted personal productivity calendar",
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
@@ -12,11 +12,13 @@
     "test": "node --test"
   },
   "keywords": [
-    "todo",
-    "list"
+    "calendar",
+    "productivity",
+    "notes",
+    "tasks"
   ],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^12.6.2",

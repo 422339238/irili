@@ -23,7 +23,7 @@ router.get('/kanban', (req, res) => {
   ).all(userId);
 
   res.render('kanban', {
-    title: '看板 - Todu',
+    title: '看板',
     todoItems,
     inProgressItems,
     doneItems,
