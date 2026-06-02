@@ -1,0 +1,548 @@
+<div class="settings-page">
+  <div class="settings-card">
+    <div class="settings-header">
+      <h1>设置</h1>
+      <p><a href="/" class="kanban-back-link">← 返回首页</a></p>
+    </div>
+
+    <div class="settings-item">
+      <div class="settings-item-main" style="width:100%;">
+        <h2>笔记分析 API</h2>
+        <p>用于远端 Cloud / CodeChurn 只读获取你的按天笔记记录。接口地址和密钥分开管理，重置后旧密钥立即失效。</p>
+
+        <div class="settings-password-form" style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">
+          <div>
+            <div class="settings-option-title">API 基址</div>
+            <input type="text" id="notesApiBaseUrl" class="input-title" value="<%= notesApiBaseUrl %>" readonly style="font-size:14px;padding:6px 10px;margin-top:6px;">
+          </div>
+
+          <div>
+            <div class="settings-option-title">分页接口</div>
+            <input type="text" id="notesApiDaysUrl" class="input-title" value="<%= notesApiDaysUrl %>?page=1&pageSize=20" readonly style="font-size:14px;padding:6px 10px;margin-top:6px;">
+          </div>
+
+          <div>
+            <div class="settings-option-title">按天接口</div>
+            <input type="text" id="notesApiDayUrl" class="input-title" value="<%= notesApiDayExampleUrl %>" readonly style="font-size:14px;padding:6px 10px;margin-top:6px;">
+          </div>
+
+          <div>
+            <div class="settings-option-title">API Key</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+              <input
+                type="text"
+                id="notesApiKeyInput"
+                class="input-title"
+                readonly
+                value="<%= notesApiKeyMeta && notesApiKeyMeta.keyPrefix ? notesApiKeyMeta.keyPrefix + '••••••••••••（仅显示前缀，重置后可见完整 key）' : '尚未生成 API key' %>"
+                style="font-size:14px;padding:6px 10px;flex:1;min-width:260px;"
+              >
+              <button type="button" class="btn-save" id="resetNotesApiKeyBtn"><%= notesApiKeyMeta && notesApiKeyMeta.keyPrefix ? '重置 key' : '生成 key' %></button>
+            </div>
+            <div class="settings-option-desc" id="notesApiKeyMeta" style="margin-top:6px;">
+              <% if (notesApiKeyMeta && notesApiKeyMeta.keyPrefix) { %>
+                当前前缀：<%= notesApiKeyMeta.keyPrefix %>
+                <% if (notesApiKeyMeta.createdAt) { %> · 创建于 <%= notesApiKeyMeta.createdAt %><% } %>
+                <% if (notesApiKeyMeta.lastUsedAt) { %> · 最近使用 <%= notesApiKeyMeta.lastUsedAt %><% } %>
+              <% } else { %>
+                当前还没有可用的 API key。
+              <% } %>
+            </div>
+            <span class="settings-sync-status" id="notesApiKeyStatus"></span>
+          </div>
+
+          <div>
+            <div class="settings-option-title">调用示例</div>
+            <pre style="margin:6px 0 0;padding:12px;border-radius:8px;background:#0f172a;color:#e2e8f0;overflow:auto;font-size:12px;line-height:1.5;"><code id="notesApiExampleCode">curl -H "Authorization: Bearer &lt;YOUR_API_KEY&gt;" "<%= notesApiDaysUrl %>?page=1&pageSize=20"</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <% if (user.isAdmin) { %>
+      <div class="settings-item">
+        <div class="settings-item-main" style="width:100%;">
+          <h2>天气城市</h2>
+          <p>
+            数据源：qwd/LocationList。当前城市：
+            <span id="currentWeatherCity"><%= weather && weather.locationName ? weather.locationName : (weather ? weather.location : '-') %></span>
+            （<span id="currentWeatherLocationId"><%= weather && weather.location ? weather.location : '-' %></span>）
+          </p>
+
+          <div class="weather-city-picker" style="margin-top:10px;">
+            <div class="weather-city-controls">
+              <input
+                type="text"
+                id="weatherCityInput"
+                class="weather-city-input"
+                placeholder="输入城市名或城市ID，例如 广州 / 101280101"
+                autocomplete="off"
+              >
+              <button type="button" class="btn-save" id="saveWeatherCityBtn">切换城市</button>
+            </div>
+            <div class="weather-city-results hidden" id="weatherCityResults"></div>
+            <div class="weather-city-history" id="weatherCityHistory">
+              <% if (weatherCityHistory && weatherCityHistory.length > 0) { %>
+                <% weatherCityHistory.forEach(function(city) { %>
+                  <span class="weather-city-tag" data-location-id="<%= city.location_id %>" data-location-name="<%= city.location_name %>">
+                    <%= city.location_name %>
+                    <span class="weather-city-tag-remove" data-location-id="<%= city.location_id %>">&times;</span>
+                  </span>
+                <% }); %>
+              <% } %>
+            </div>
+          </div>
+          <span class="settings-sync-status" id="weatherCityStatus"></span>
+        </div>
+      </div>
+
+      <div class="settings-item">
+        <div class="settings-item-main" style="width:100%;">
+          <h2>实时天气自动更新</h2>
+          <p>打开页面时，若距离上次获取已超过 <%= weather ? weather.intervalMinutes : 30 %> 分钟则拉取一次；每天最多 <%= weather ? weather.maxRequests : 1000 %> 次。</p>
+          <div class="settings-option-row weather-toggle-row" style="margin-top:10px;">
+            <label class="switch">
+              <input type="checkbox" id="weatherAutoFetchSwitch" <%= weather && weather.enabled ? 'checked' : '' %>>
+              <span class="switch-slider"></span>
+            </label>
+            <div class="settings-option-desc settings-weather-usage" id="weatherUsageMeta">
+              今日已请求 <%= weather ? weather.requestCount : 0 %>/<%= weather ? weather.maxRequests : 1000 %> 次，
+              <% if (weather && weather.limitReached) { %>
+                已达今日上限，明日自动重置。
+              <% } else { %>
+                剩余 <%= weather ? weather.remainingRequests : 1000 %> 次。
+              <% } %>
+            </div>
+          </div>
+          <span class="settings-sync-status" id="weatherAutoFetchStatus"></span>
+        </div>
+      </div>
+
+      <div class="settings-item">
+        <div class="settings-item-main" style="width:100%;">
+          <h2>手动更新节假日数据</h2>
+          <p>从 holiday-cn 拉取最新数据（当年和下一年）。</p>
+          <div class="settings-actions">
+            <button type="button" class="btn-save" id="manualSyncBtn">立即更新</button>
+          </div>
+          <span class="settings-sync-status" id="manualSyncStatus"></span>
+        </div>
+      </div>
+    <% } %>
+
+    <div class="settings-item">
+      <div class="settings-item-main" style="width:100%;">
+        <h2>修改密码</h2>
+        <p>密码需包含字母和数字，不少于 6 位。</p>
+        <div class="settings-password-form" style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
+          <input type="password" id="changePwdOld" placeholder="旧密码" class="input-title" style="font-size:14px;padding:6px 10px;">
+          <input type="password" id="changePwdNew" placeholder="新密码" class="input-title" style="font-size:14px;padding:6px 10px;">
+          <input type="password" id="changePwdConfirm" placeholder="确认新密码" class="input-title" style="font-size:14px;padding:6px 10px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="btn-save" id="changePwdBtn">确认修改</button>
+            <span class="settings-sync-status" id="changePwdStatus"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-item">
+      <div class="settings-item-main">
+        <h2>退出登录</h2>
+        <p>从当前账号安全退出。</p>
+      </div>
+      <form method="POST" action="/logout" class="inline-form">
+        <button type="submit" class="btn-settings">退出</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  function setStatus(el, text, kind) {
+    if (!el) return;
+    el.textContent = text || '';
+    el.className = 'settings-sync-status' + (kind ? ' ' + kind : '');
+  }
+
+  function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function updateNotesApiExample(apiKey) {
+    var exampleCode = document.getElementById('notesApiExampleCode');
+    if (!exampleCode) return;
+    var safeKey = apiKey || '<YOUR_API_KEY>';
+    exampleCode.innerHTML = 'curl -H "Authorization: Bearer ' + escapeHtml(safeKey) + '" "<%= notesApiDaysUrl %>?page=1&pageSize=20"';
+  }
+
+  var resetNotesApiKeyBtn = document.getElementById('resetNotesApiKeyBtn');
+  var notesApiKeyInput = document.getElementById('notesApiKeyInput');
+  var notesApiKeyMeta = document.getElementById('notesApiKeyMeta');
+  var notesApiKeyStatus = document.getElementById('notesApiKeyStatus');
+
+  if (resetNotesApiKeyBtn && notesApiKeyInput) {
+    resetNotesApiKeyBtn.addEventListener('click', async function() {
+      resetNotesApiKeyBtn.disabled = true;
+      setStatus(notesApiKeyStatus, '处理中...', '');
+
+      try {
+        var response = await fetch('/settings/api-access/key/reset', {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        });
+        var payload = await response.json();
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload && payload.error ? payload.error : '生成失败');
+        }
+
+        notesApiKeyInput.value = payload.apiKey;
+        updateNotesApiExample(payload.apiKey);
+        if (notesApiKeyMeta) {
+          var parts = [];
+          if (payload.meta && payload.meta.keyPrefix) parts.push('当前前缀：' + payload.meta.keyPrefix);
+          if (payload.meta && payload.meta.createdAt) parts.push('创建于 ' + payload.meta.createdAt);
+          notesApiKeyMeta.textContent = parts.join(' · ');
+        }
+        resetNotesApiKeyBtn.textContent = '重置 key';
+        setStatus(notesApiKeyStatus, '新 key 已生成，旧 key 已失效。请立即保存。', 'success');
+      } catch (error) {
+        setStatus(notesApiKeyStatus, error.message || '生成失败', 'error');
+      } finally {
+        resetNotesApiKeyBtn.disabled = false;
+      }
+    });
+  }
+
+  updateNotesApiExample('');
+
+  var changePwdBtn = document.getElementById('changePwdBtn');
+  var changePwdStatus = document.getElementById('changePwdStatus');
+  if (changePwdBtn) {
+    changePwdBtn.addEventListener('click', async function() {
+      var oldPwd = document.getElementById('changePwdOld').value;
+      var newPwd = document.getElementById('changePwdNew').value;
+      var confirmPwd = document.getElementById('changePwdConfirm').value;
+
+      setStatus(changePwdStatus, '', '');
+
+      if (!oldPwd || !newPwd || !confirmPwd) {
+        setStatus(changePwdStatus, '请填写所有字段', 'error');
+        return;
+      }
+      if (newPwd !== confirmPwd) {
+        setStatus(changePwdStatus, '两次输入的新密码不一致', 'error');
+        return;
+      }
+      if (newPwd.length < 6) {
+        setStatus(changePwdStatus, '新密码不能少于6位', 'error');
+        return;
+      }
+      if (!/[a-zA-Z]/.test(newPwd) || !/[0-9]/.test(newPwd)) {
+        setStatus(changePwdStatus, '密码必须包含字母和数字', 'error');
+        return;
+      }
+
+      changePwdBtn.disabled = true;
+      setStatus(changePwdStatus, '提交中...', '');
+      try {
+        var resp = await fetch('/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ old_password: oldPwd, new_password: newPwd, confirm_password: confirmPwd })
+        });
+        var data = await resp.json();
+        if (resp.ok && data.success) {
+          setStatus(changePwdStatus, '密码修改成功', 'success');
+          document.getElementById('changePwdOld').value = '';
+          document.getElementById('changePwdNew').value = '';
+          document.getElementById('changePwdConfirm').value = '';
+        } else {
+          setStatus(changePwdStatus, data.error || '修改失败', 'error');
+        }
+      } catch (err) {
+        setStatus(changePwdStatus, '网络错误', 'error');
+      } finally {
+        changePwdBtn.disabled = false;
+      }
+    });
+  }
+
+  <% if (user.isAdmin) { %>
+    var weatherAutoFetchSwitch = document.getElementById('weatherAutoFetchSwitch');
+    var weatherAutoFetchStatus = document.getElementById('weatherAutoFetchStatus');
+    var weatherUsageMeta = document.getElementById('weatherUsageMeta');
+    var weatherCityInput = document.getElementById('weatherCityInput');
+    var saveWeatherCityBtn = document.getElementById('saveWeatherCityBtn');
+    var weatherCityStatus = document.getElementById('weatherCityStatus');
+    var weatherCityResults = document.getElementById('weatherCityResults');
+    var weatherCityHistoryEl = document.getElementById('weatherCityHistory');
+    var currentWeatherCity = document.getElementById('currentWeatherCity');
+    var currentWeatherLocationId = document.getElementById('currentWeatherLocationId');
+    var manualSyncBtn = document.getElementById('manualSyncBtn');
+    var manualSyncStatus = document.getElementById('manualSyncStatus');
+    var selectedWeatherCityId = '';
+    var weatherCitySearchTimer = null;
+    var weatherInitial = {
+      locationId: <%- JSON.stringify(weather && weather.location ? weather.location : '') %>,
+      locationName: <%- JSON.stringify(weather && weather.locationName ? weather.locationName : '') %>
+    };
+
+    function updateWeatherUsageMeta(requestCount, maxRequests, limitReached) {
+      if (!weatherUsageMeta) return;
+      var safeRequestCount = Number.isFinite(requestCount) ? requestCount : 0;
+      var safeMaxRequests = Number.isFinite(maxRequests) && maxRequests > 0 ? maxRequests : 1000;
+      var safeLimitReached = Boolean(limitReached) || safeRequestCount >= safeMaxRequests;
+      var remaining = Math.max(safeMaxRequests - safeRequestCount, 0);
+
+      weatherUsageMeta.textContent = safeLimitReached
+        ? ('今日已请求 ' + safeRequestCount + '/' + safeMaxRequests + ' 次，已达今日上限，明日自动重置。')
+        : ('今日已请求 ' + safeRequestCount + '/' + safeMaxRequests + ' 次，剩余 ' + remaining + ' 次。');
+    }
+
+    if (manualSyncBtn && manualSyncStatus) {
+      manualSyncBtn.addEventListener('click', async function() {
+        manualSyncBtn.disabled = true;
+        setStatus(manualSyncStatus, '更新中...', '');
+        try {
+          var response = await fetch('/admin/settings/holiday-sync', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+          });
+          var payload = await response.json();
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload && payload.message ? payload.message : '更新失败');
+          }
+          setStatus(manualSyncStatus, '更新成功', 'success');
+        } catch (error) {
+          setStatus(manualSyncStatus, error.message || '更新失败', 'error');
+        } finally {
+          manualSyncBtn.disabled = false;
+        }
+      });
+    }
+
+    if (weatherAutoFetchSwitch && weatherAutoFetchStatus) {
+      weatherAutoFetchSwitch.addEventListener('change', async function() {
+        var nextEnabled = weatherAutoFetchSwitch.checked;
+        weatherAutoFetchSwitch.disabled = true;
+        setStatus(weatherAutoFetchStatus, '保存中...', '');
+
+        try {
+          var response = await fetch('/admin/settings/weather-auto-fetch', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ enabled: nextEnabled })
+          });
+          var payload = await response.json();
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload && payload.message ? payload.message : '保存失败');
+          }
+
+          weatherAutoFetchSwitch.checked = Boolean(payload.enabled);
+          updateWeatherUsageMeta(payload.requestCount, payload.maxRequests, payload.limitReached);
+          setStatus(
+            weatherAutoFetchStatus,
+            payload.limitReached ? '已达今日上限，明日重置' : (payload.enabled ? '已开启' : '已关闭'),
+            payload.limitReached ? 'error' : 'success'
+          );
+        } catch (error) {
+          weatherAutoFetchSwitch.checked = !nextEnabled;
+          setStatus(weatherAutoFetchStatus, error.message || '保存失败', 'error');
+        } finally {
+          weatherAutoFetchSwitch.disabled = false;
+        }
+      });
+    }
+
+    function clearWeatherCityResults() {
+      if (!weatherCityResults) return;
+      weatherCityResults.innerHTML = '';
+      weatherCityResults.classList.add('hidden');
+    }
+
+    function renderWeatherCityResults(locations) {
+      if (!weatherCityResults) return;
+      weatherCityResults.innerHTML = '';
+      var list = Array.isArray(locations) ? locations : [];
+      if (list.length === 0) {
+        weatherCityResults.innerHTML = '<div class="weather-city-empty">未找到匹配城市</div>';
+        weatherCityResults.classList.remove('hidden');
+        return;
+      }
+
+      list.forEach(function(item) {
+        var optionBtn = document.createElement('button');
+        optionBtn.type = 'button';
+        optionBtn.className = 'weather-city-option';
+        optionBtn.dataset.locationId = item.id;
+        optionBtn.dataset.locationName = item.nameZh || item.nameEn || item.id;
+        optionBtn.textContent = item.label || ((item.nameZh || item.nameEn || item.id) + ' (' + item.id + ')');
+        weatherCityResults.appendChild(optionBtn);
+      });
+
+      weatherCityResults.classList.remove('hidden');
+    }
+
+    async function searchWeatherCities(keyword) {
+      var q = String(keyword || '').trim();
+      if (!q) {
+        clearWeatherCityResults();
+        return;
+      }
+
+      weatherCityResults.innerHTML = '<div class="weather-city-empty">搜索中...</div>';
+      weatherCityResults.classList.remove('hidden');
+
+      try {
+        var response = await fetch('/admin/settings/weather-locations?q=' + encodeURIComponent(q), {
+          method: 'GET',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        var payload = await response.json();
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload && payload.message ? payload.message : '城市搜索失败');
+        }
+        renderWeatherCityResults(payload.locations || []);
+      } catch (error) {
+        weatherCityResults.innerHTML = '<div class="weather-city-empty">城市搜索失败</div>';
+        weatherCityResults.classList.remove('hidden');
+      }
+    }
+
+    function renderCityHistoryTags(historyList) {
+      if (!weatherCityHistoryEl) return;
+      weatherCityHistoryEl.innerHTML = '';
+      (Array.isArray(historyList) ? historyList : []).forEach(function(city) {
+        var tag = document.createElement('span');
+        tag.className = 'weather-city-tag';
+        tag.dataset.locationId = city.location_id;
+        tag.dataset.locationName = city.location_name;
+        tag.textContent = city.location_name;
+
+        var removeBtn = document.createElement('span');
+        removeBtn.className = 'weather-city-tag-remove';
+        removeBtn.dataset.locationId = city.location_id;
+        removeBtn.innerHTML = '&times;';
+        tag.appendChild(removeBtn);
+        weatherCityHistoryEl.appendChild(tag);
+      });
+    }
+
+    if (weatherCityInput) {
+      weatherCityInput.value = weatherInitial.locationName || weatherInitial.locationId || '';
+
+      weatherCityInput.addEventListener('input', function() {
+        selectedWeatherCityId = '';
+        if (weatherCitySearchTimer) clearTimeout(weatherCitySearchTimer);
+        weatherCitySearchTimer = setTimeout(function() {
+          searchWeatherCities(weatherCityInput.value);
+        }, 250);
+      });
+
+      weatherCityInput.addEventListener('focus', function() {
+        if (weatherCityInput.value.trim()) {
+          searchWeatherCities(weatherCityInput.value);
+        }
+      });
+    }
+
+    if (weatherCityResults) {
+      weatherCityResults.addEventListener('click', function(event) {
+        var target = event.target && event.target.closest ? event.target.closest('.weather-city-option') : null;
+        if (!target) return;
+
+        selectedWeatherCityId = target.dataset.locationId || '';
+        var selectedName = target.dataset.locationName || selectedWeatherCityId;
+        weatherCityInput.value = selectedName;
+        clearWeatherCityResults();
+        setStatus(weatherCityStatus, '已选择：' + selectedName + ' (' + selectedWeatherCityId + ')', '');
+      });
+    }
+
+    document.addEventListener('click', function(event) {
+      if (!weatherCityResults || !weatherCityInput) return;
+      if (weatherCityResults.contains(event.target) || event.target === weatherCityInput) return;
+      clearWeatherCityResults();
+    });
+
+    if (weatherCityHistoryEl) {
+      weatherCityHistoryEl.addEventListener('click', async function(event) {
+        var removeBtn = event.target.closest('.weather-city-tag-remove');
+        if (removeBtn) {
+          event.stopPropagation();
+          var locId = removeBtn.dataset.locationId;
+          if (!locId) return;
+          try {
+            await fetch('/admin/settings/weather-city-history/' + encodeURIComponent(locId), {
+              method: 'DELETE',
+              headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            var tag = removeBtn.closest('.weather-city-tag');
+            if (tag) tag.remove();
+          } catch (e) {}
+          return;
+        }
+
+        var tag = event.target.closest('.weather-city-tag');
+        if (!tag) return;
+        selectedWeatherCityId = tag.dataset.locationId || '';
+        if (weatherCityInput) weatherCityInput.value = tag.dataset.locationName || selectedWeatherCityId;
+        if (saveWeatherCityBtn) saveWeatherCityBtn.click();
+      });
+    }
+
+    if (saveWeatherCityBtn && weatherCityStatus && weatherCityInput) {
+      saveWeatherCityBtn.addEventListener('click', async function() {
+        var rawInput = weatherCityInput.value.trim();
+        var locationId = selectedWeatherCityId || (/^\d+$/.test(rawInput) ? rawInput : '');
+        if (!locationId) {
+          setStatus(weatherCityStatus, '请先在列表中选择城市，或输入有效城市ID', 'error');
+          return;
+        }
+
+        saveWeatherCityBtn.disabled = true;
+        weatherCityInput.disabled = true;
+        setStatus(weatherCityStatus, '切换中...', '');
+
+        try {
+          var response = await fetch('/admin/settings/weather-location', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ locationId: locationId })
+          });
+          var payload = await response.json();
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload && payload.message ? payload.message : '切换城市失败');
+          }
+
+          selectedWeatherCityId = payload.locationId || locationId;
+          weatherCityInput.value = payload.locationName || selectedWeatherCityId;
+          if (currentWeatherCity) currentWeatherCity.textContent = payload.locationName || selectedWeatherCityId;
+          if (currentWeatherLocationId) currentWeatherLocationId.textContent = selectedWeatherCityId;
+          if (payload.cityHistory) renderCityHistoryTags(payload.cityHistory);
+
+          setStatus(weatherCityStatus, '城市已切换，正在刷新天气...', 'success');
+          setTimeout(function() { window.location.reload(); }, 400);
+        } catch (error) {
+          setStatus(weatherCityStatus, error.message || '切换城市失败', 'error');
+        } finally {
+          saveWeatherCityBtn.disabled = false;
+          weatherCityInput.disabled = false;
+        }
+      });
+    }
+  <% } %>
+})();
+</script>

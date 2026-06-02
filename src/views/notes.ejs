@@ -1,0 +1,635 @@
+<%
+  const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+
+  // 月份背景色 — 12个月循环
+  const monthColors = [
+    'rgba(255,107,107,0.10)', // 1月 红
+    'rgba(255,146,43,0.10)',  // 2月 橙
+    'rgba(255,217,61,0.10)',  // 3月 黄
+    'rgba(76,209,55,0.10)',   // 4月 绿
+    'rgba(72,219,251,0.10)',  // 5月 青
+    'rgba(52,152,219,0.10)',  // 6月 蓝
+    'rgba(155,89,182,0.10)',  // 7月 紫
+    'rgba(253,121,168,0.10)', // 8月 粉
+    'rgba(0,210,211,0.10)',   // 9月 碧
+    'rgba(232,67,147,0.10)',  // 10月 玫红
+    'rgba(108,92,231,0.10)',  // 11月 靛
+    'rgba(162,155,254,0.10)'  // 12月 淡紫
+  ];
+
+  const monthBorderColors = [
+    'rgba(255,107,107,0.35)',
+    'rgba(255,146,43,0.35)',
+    'rgba(255,217,61,0.35)',
+    'rgba(76,209,55,0.35)',
+    'rgba(72,219,251,0.35)',
+    'rgba(52,152,219,0.35)',
+    'rgba(155,89,182,0.35)',
+    'rgba(253,121,168,0.35)',
+    'rgba(0,210,211,0.35)',
+    'rgba(232,67,147,0.35)',
+    'rgba(108,92,231,0.35)',
+    'rgba(162,155,254,0.35)'
+  ];
+
+  function getMonthFromDate(dateStr) {
+    return parseInt(dateStr.split('-')[1], 10);
+  }
+
+  function dayLabel(dateStr) {
+    const parts = dateStr.split('-');
+    const m = parseInt(parts[1], 10);
+    const d = parseInt(parts[2], 10);
+    const dt = new Date(parseInt(parts[0], 10), m - 1, d);
+    const weekday = dayNames[dt.getDay()];
+    const bgColor = monthBorderColors[m - 1] || '#b8860b';
+    return '<span style="background-color:' + bgColor + ';color:#fff;padding:0.1em 0.4em;border-radius:3px;">' + m + '月</span> ' + d + '日 星期' + weekday;
+  }
+
+  function getEntryMonthBg(dateStr) {
+    const m = getMonthFromDate(dateStr);
+    return monthColors[m - 1] || 'transparent';
+  }
+
+  function getEntryMonthBorder(dateStr) {
+    const m = getMonthFromDate(dateStr);
+    return monthBorderColors[m - 1] || 'transparent';
+  }
+%>
+
+<div class="app-layout theme-apple">
+  <div class="theme-orb theme-orb-a" aria-hidden="true"></div>
+  <div class="theme-orb theme-orb-b" aria-hidden="true"></div>
+  <div class="theme-orb theme-orb-c" aria-hidden="true"></div>
+
+  <div class="notes-wrapper">
+    <div class="notes-topbar">
+      <div class="notes-topbar-left">
+        <a href="/" class="kanban-back-link">← 任务列表</a>
+        <a href="/kanban" class="kanban-back-link">看板</a>
+        <h1 class="kanban-title">笔记</h1>
+      </div>
+      <div class="notes-topbar-right">
+        <button type="button" class="btn-save notes-new-btn" id="notesNewBtn">+ 记录笔记</button>
+        <span class="month-label">全部笔记 (<%= typeof totalEntries !== 'undefined' ? totalEntries : entries.length %>)</span>
+        <button type="button" class="btn-view-toggle" id="viewToggleBtn" title="切换视图模式">
+          <span id="viewToggleLabel">瀑布流</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="settings-modal-overlay hidden" id="notesAddOverlay">
+      <div class="settings-modal calendar-quick-add-modal" role="dialog" aria-modal="true">
+        <div class="settings-modal-header">
+          <h3>记录笔记</h3>
+          <button type="button" class="settings-modal-close" id="notesAddCloseBtn" aria-label="关闭">×</button>
+        </div>
+        <div class="settings-modal-body">
+          <form method="POST" action="/notes" class="calendar-quick-add-form" id="notesAddForm">
+            <input type="hidden" name="month" value="<%= currentMonth %>">
+            <input type="hidden" name="client_time" value="" id="notesAddClientTime">
+            <input type="hidden" name="date" value="<%= today %>" id="notesAddDateInput">
+            <textarea name="content" rows="4" class="notes-textarea" placeholder="记录你的想法..." required id="notesAddContentInput"></textarea>
+            <div class="calendar-quick-add-actions">
+              <button type="submit" class="btn-save">保存</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes-timeline" id="notesTimeline">
+      <% if (entries.length === 0) { %>
+        <div class="notes-empty">
+          <p>暂无笔记</p>
+          <p class="empty-hint">在上方记录你的第一条想法！</p>
+        </div>
+      <% } else { %>
+
+        <!-- 瀑布流模式容器 -->
+        <div id="waterfallContainer" class="notes-waterfall-container" style="display:none;">
+          <div id="waterfallList" class="notes-waterfall-list">
+            <!-- 由 JS 动态渲染 -->
+          </div>
+          <div id="waterfallLoader" class="notes-waterfall-loader" style="display:none;">
+            <span class="loader-spinner"></span> 加载中...
+          </div>
+          <div id="waterfallEnd" class="notes-waterfall-end" style="display:none;">
+            — 已加载全部笔记 —
+          </div>
+        </div>
+
+        <!-- 分页模式容器 -->
+        <div id="paginationContainer">
+          <div id="notesListContainer">
+            <% var lastDate = ''; %>
+            <% entries.forEach(function(item) { %>
+              <% if (item.date !== lastDate) { lastDate = item.date; %>
+                <div class="notes-day-header" data-date="<%= item.date %>" style="border-left: 3px solid <%= getEntryMonthBorder(item.date) %>;">
+                  <span class="notes-day-title"><%- dayLabel(item.date) %></span>
+                </div>
+              <% } %>
+              <div class="note-entry" style="background: <%= getEntryMonthBg(item.date) %>; border-left: 3px solid <%= getEntryMonthBorder(item.date) %>;">
+                <div class="note-display" id="note-display-<%= item.date %>-<%= item.noteIndex %>">
+                  <% if (item.entry.content) { %>
+                    <div class="note-content"><%= item.entry.content %></div>
+                  <% } %>
+                  <div class="note-footer">
+                    <div class="note-footer-left">
+                      <form method="POST" action="/notes/<%= item.date %>/delete" class="inline-form note-delete-form">
+                        <input type="hidden" name="month" value="<%= currentMonth %>">
+                        <input type="hidden" name="noteIndex" value="<%= item.noteIndex %>">
+                        <button type="button" class="btn-icon btn-delete" title="删除" onclick="if(confirm('确定删除这条笔记？'))this.closest('form').submit()">✕</button>
+                      </form>
+                    </div>
+                    <div class="note-footer-right">
+                      <% if (item.entry.time) { %>
+                        <span class="note-time"><%= item.entry.time %></span>
+                      <% } %>
+                      <div class="note-actions">
+                        <button type="button" class="btn-icon btn-edit" onclick="toggleNoteEdit('<%= item.date %>', <%= item.noteIndex %>)" title="编辑">✎</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="note-edit-form hidden" id="note-edit-<%= item.date %>-<%= item.noteIndex %>">
+                  <form method="POST" action="/notes/<%= item.date %>/update">
+                    <input type="hidden" name="month" value="<%= currentMonth %>">
+                    <input type="hidden" name="noteIndex" value="<%= item.noteIndex %>">
+                    <textarea name="content" rows="4" class="notes-textarea notes-edit-textarea" required><%= item.entry.content %></textarea>
+                    <div class="notes-add-row notes-add-actions">
+                      <button type="submit" class="btn-save">保存</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            <% }); %>
+          </div>
+
+          <% if (totalPages > 1) { %>
+            <div class="notes-pagination" style="display:flex;justify-content:center;align-items:center;gap:0.75rem;padding:1.2rem 0;">
+              <% if (page > 1) { %>
+                <a href="/notes?page=<%= page - 1 %>" class="btn-nav">← 上一页</a>
+              <% } %>
+              <span style="font-size:0.9rem;color:#888;"><%= page %> / <%= totalPages %></span>
+              <% if (page < totalPages) { %>
+                <a href="/notes?page=<%= page + 1 %>" class="btn-nav">下一页 →</a>
+              <% } %>
+            </div>
+          <% } %>
+        </div>
+
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<style>
+.btn-view-toggle {
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.25);
+  color: #ccc;
+  padding: 0.25em 0.7em;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-left: 0.5rem;
+}
+.btn-view-toggle:hover {
+  background: rgba(255,255,255,0.25);
+  color: #fff;
+}
+.btn-view-toggle.active {
+  background: rgba(52,152,219,0.3);
+  border-color: rgba(52,152,219,0.5);
+  color: #5dade2;
+}
+
+.notes-waterfall-container {
+  padding-bottom: 2rem;
+}
+.notes-waterfall-list .note-entry {
+  border-radius: 8px;
+  margin-bottom: 0.3rem;
+  padding-left: 0.5rem;
+}
+.notes-waterfall-loader {
+  text-align: center;
+  padding: 1.5rem 0;
+  color: #888;
+  font-size: 0.9rem;
+}
+.loader-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: #5dade2;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 0.4em;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.notes-waterfall-end {
+  text-align: center;
+  padding: 1.2rem 0;
+  color: #666;
+  font-size: 0.85rem;
+}
+
+/* 分页容器中 note-entry 也加月份背景 */
+#paginationContainer .note-entry {
+  border-radius: 8px;
+  margin-bottom: 0.3rem;
+  padding-left: 0.5rem;
+}
+</style>
+
+<script src="/js/draft-storage.js?v=20260416a"></script>
+<script>
+var notesAddOverlay = document.getElementById('notesAddOverlay');
+var notesNewBtn = document.getElementById('notesNewBtn');
+var notesAddCloseBtn = document.getElementById('notesAddCloseBtn');
+var notesAddForm = document.getElementById('notesAddForm');
+var notesAddContentInput = document.getElementById('notesAddContentInput');
+var notesAddOpenedAt = 0;
+var NOTES_ADD_DRAFT_KEY = 'draft:notes-add';
+
+function getDraftStore() {
+  return window.DraftStorage || null;
+}
+
+function getNotesAddDraft() {
+  var store = getDraftStore();
+  return store ? store.get(NOTES_ADD_DRAFT_KEY) : {};
+}
+
+function updateNotesAddDraft(partial) {
+  var store = getDraftStore();
+  if (!store) {
+    return getNotesAddDraft();
+  }
+  return store.patch(NOTES_ADD_DRAFT_KEY, partial);
+}
+
+function clearNotesAddDraft(fields) {
+  var store = getDraftStore();
+  if (!store) {
+    return getNotesAddDraft();
+  }
+  return store.clearFields(NOTES_ADD_DRAFT_KEY, fields);
+}
+
+function syncNotesAddDraft() {
+  return updateNotesAddDraft({
+    content: notesAddContentInput ? notesAddContentInput.value : ''
+  });
+}
+
+function openNotesAdd() {
+  if (!notesAddOverlay) return;
+  notesAddOpenedAt = Date.now();
+  var draft = getNotesAddDraft();
+  if (notesAddContentInput) {
+    notesAddContentInput.value = draft.content || '';
+  }
+  notesAddOverlay.classList.remove('hidden');
+  if (notesAddContentInput) {
+    setTimeout(function() { notesAddContentInput.focus(); }, 0);
+  }
+}
+
+function closeNotesAdd() {
+  if (!notesAddOverlay) return;
+  syncNotesAddDraft();
+  notesAddOverlay.classList.add('hidden');
+  if (notesAddForm) notesAddForm.reset();
+}
+
+if (notesNewBtn) notesNewBtn.addEventListener('click', openNotesAdd);
+if (notesAddCloseBtn) notesAddCloseBtn.addEventListener('click', function(e) { e.preventDefault(); closeNotesAdd(); });
+if (notesAddOverlay) {
+  notesAddOverlay.addEventListener('click', function(e) {
+    if (e.target !== notesAddOverlay) return;
+    if (Date.now() - notesAddOpenedAt < 200) return;
+    closeNotesAdd();
+  });
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeNotesAdd();
+});
+
+if (notesAddContentInput) {
+  notesAddContentInput.addEventListener('input', function() {
+    syncNotesAddDraft();
+  });
+}
+
+function toggleNoteEdit(dateStr, noteIndex) {
+  var displayEl = document.getElementById('note-display-' + dateStr + '-' + noteIndex);
+  var editEl = document.getElementById('note-edit-' + dateStr + '-' + noteIndex);
+  if (!displayEl || !editEl) return;
+
+  var isEditing = !editEl.classList.contains('hidden');
+  if (isEditing) {
+    editEl.classList.add('hidden');
+    displayEl.style.display = '';
+    return;
+  }
+
+  var openedForms = document.querySelectorAll('.note-edit-form:not(.hidden)');
+  openedForms.forEach(function(formEl) { formEl.classList.add('hidden'); });
+  var openedDisplays = document.querySelectorAll('.note-display[style*="display: none"]');
+  openedDisplays.forEach(function(d) { d.style.display = ''; });
+
+  editEl.classList.remove('hidden');
+  displayEl.style.display = 'none';
+
+  var textarea = editEl.querySelector('textarea[name="content"]');
+  if (textarea) {
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }
+}
+
+function getLocalNow() {
+  var now = new Date();
+  return {
+    date: now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0'),
+    time: String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0')
+  };
+}
+
+function submitNoteForm(form) {
+  if (!form) return;
+  var local = getLocalNow();
+  var timeInput = form.querySelector('input[name="client_time"]');
+  if (timeInput) timeInput.value = local.time;
+  var dateInput = form.querySelector('input[name="date"]');
+  if (dateInput && !dateInput.value) dateInput.value = local.date;
+  form.requestSubmit ? form.requestSubmit() : form.submit();
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter') return;
+  if (e.shiftKey) return;
+  var target = e.target;
+  if (!target || target.tagName !== 'TEXTAREA') return;
+  if (!target.classList.contains('notes-textarea')) return;
+  e.preventDefault();
+  if (!target.value.trim()) return;
+  submitNoteForm(target.closest('form'));
+});
+
+(function() {
+  var local = getLocalNow();
+  var dateInput = document.getElementById('notesAddDateInput');
+  if (dateInput) dateInput.value = local.date;
+})();
+
+document.querySelectorAll('.notes-wrapper form').forEach(function(form) {
+  form.addEventListener('submit', function() {
+    var local = getLocalNow();
+    var timeInput = form.querySelector('input[name="client_time"]');
+    if (timeInput) timeInput.value = local.time;
+    var dateInput = form.querySelector('input[name="date"]');
+    if (dateInput && !dateInput.value) dateInput.value = local.date;
+    if (form === notesAddForm) {
+      clearNotesAddDraft(['content']);
+    }
+  });
+});
+
+// ============ 瀑布流 / 分页 切换逻辑 ============
+(function() {
+  var VIEW_KEY = 'notes_view_mode'; // localStorage key
+  var viewToggleBtn = document.getElementById('viewToggleBtn');
+  var viewToggleLabel = document.getElementById('viewToggleLabel');
+  var waterfallContainer = document.getElementById('waterfallContainer');
+  var paginationContainer = document.getElementById('paginationContainer');
+  var waterfallList = document.getElementById('waterfallList');
+  var waterfallLoader = document.getElementById('waterfallLoader');
+  var waterfallEnd = document.getElementById('waterfallEnd');
+
+  if (!viewToggleBtn || !waterfallContainer || !paginationContainer) return;
+
+  var currentMode = localStorage.getItem(VIEW_KEY) || 'pagination';
+  var waterfallPage = 0;
+  var waterfallLoading = false;
+  var waterfallHasMore = true;
+
+  var dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+
+  var monthColors = [
+    'rgba(255,107,107,0.10)', 'rgba(255,146,43,0.10)', 'rgba(255,217,61,0.10)',
+    'rgba(76,209,55,0.10)',   'rgba(72,219,251,0.10)', 'rgba(52,152,219,0.10)',
+    'rgba(155,89,182,0.10)',  'rgba(253,121,168,0.10)', 'rgba(0,210,211,0.10)',
+    'rgba(232,67,147,0.10)',  'rgba(108,92,231,0.10)', 'rgba(162,155,254,0.10)'
+  ];
+  var monthBorderColors = [
+    'rgba(255,107,107,0.35)', 'rgba(255,146,43,0.35)', 'rgba(255,217,61,0.35)',
+    'rgba(76,209,55,0.35)',   'rgba(72,219,251,0.35)', 'rgba(52,152,219,0.35)',
+    'rgba(155,89,182,0.35)',  'rgba(253,121,168,0.35)', 'rgba(0,210,211,0.35)',
+    'rgba(232,67,147,0.35)',  'rgba(108,92,231,0.35)', 'rgba(162,155,254,0.35)'
+  ];
+
+  function dayLabel(dateStr) {
+    var parts = dateStr.split('-');
+    var m = parseInt(parts[1], 10);
+    var d = parseInt(parts[2], 10);
+    var dt = new Date(parseInt(parts[0], 10), m - 1, d);
+    var weekday = dayNames[dt.getDay()];
+    var bgColor = monthBorderColors[m - 1] || '#b8860b';
+    return '<span style="background-color:' + bgColor + ';color:#fff;padding:0.1em 0.4em;border-radius:3px;">' + m + '月</span> ' + d + '日 星期' + weekday;
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function renderWaterfallEntries(entries) {
+    var lastDateEl = waterfallList.querySelector('.notes-day-header:last-of-type');
+    var lastDate = lastDateEl ? lastDateEl.getAttribute('data-date') : '';
+
+    entries.forEach(function(item) {
+      var m = parseInt(item.date.split('-')[1], 10);
+      var bg = monthColors[m - 1] || 'transparent';
+      var border = monthBorderColors[m - 1] || 'transparent';
+
+      if (item.date !== lastDate) {
+        lastDate = item.date;
+        var header = document.createElement('div');
+        header.className = 'notes-day-header';
+        header.setAttribute('data-date', item.date);
+        header.style.borderLeft = '3px solid ' + border;
+        header.innerHTML = '<span class="notes-day-title">' + dayLabel(item.date) + '</span>';
+        waterfallList.appendChild(header);
+      }
+
+      var entryDiv = document.createElement('div');
+      entryDiv.className = 'note-entry';
+      entryDiv.style.background = bg;
+      entryDiv.style.borderLeft = '3px solid ' + border;
+      entryDiv.style.borderRadius = '8px';
+      entryDiv.style.marginBottom = '0.3rem';
+      entryDiv.style.paddingLeft = '0.5rem';
+
+      var displayId = 'wf-note-display-' + item.date + '-' + item.noteIndex;
+      var editId = 'wf-note-edit-' + item.date + '-' + item.noteIndex;
+
+      var html = '<div class="note-display" id="' + displayId + '">';
+      if (item.entry && item.entry.content) {
+        html += '<div class="note-content">' + escapeHtml(item.entry.content) + '</div>';
+      }
+      html += '<div class="note-footer">';
+      html += '<div class="note-footer-left">';
+      html += '<form method="POST" action="/notes/' + item.date + '/delete" class="inline-form note-delete-form">';
+      html += '<input type="hidden" name="month" value="<%= currentMonth %>">';
+      html += '<input type="hidden" name="noteIndex" value="' + item.noteIndex + '">';
+      html += '<button type="button" class="btn-icon btn-delete" title="删除" onclick="if(confirm(\'确定删除这条笔记？\'))this.closest(\'form\').submit()">✕</button>';
+      html += '</form></div>';
+      html += '<div class="note-footer-right">';
+      if (item.entry && item.entry.time) {
+        html += '<span class="note-time">' + escapeHtml(item.entry.time) + '</span>';
+      }
+      html += '<div class="note-actions">';
+      html += '<button type="button" class="btn-icon btn-edit" onclick="toggleNoteEdit(\'' + item.date + '\', ' + item.noteIndex + ', \'wf-\')" title="编辑">✎</button>';
+      html += '</div></div></div></div>';
+
+      html += '<div class="note-edit-form hidden" id="' + editId + '">';
+      html += '<form method="POST" action="/notes/' + item.date + '/update">';
+      html += '<input type="hidden" name="month" value="<%= currentMonth %>">';
+      html += '<input type="hidden" name="noteIndex" value="' + item.noteIndex + '">';
+      html += '<textarea name="content" rows="4" class="notes-textarea notes-edit-textarea" required>' + escapeHtml(item.entry ? item.entry.content || '' : '') + '</textarea>';
+      html += '<div class="notes-add-row notes-add-actions"><button type="submit" class="btn-save">保存</button></div>';
+      html += '</form></div>';
+
+      entryDiv.innerHTML = html;
+      waterfallList.appendChild(entryDiv);
+    });
+  }
+
+  function loadNextPage() {
+    if (waterfallLoading || !waterfallHasMore) return;
+    waterfallLoading = true;
+    waterfallPage++;
+    if (waterfallLoader) waterfallLoader.style.display = '';
+
+    fetch('/notes/api/entries?page=' + waterfallPage)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        waterfallLoading = false;
+        if (waterfallLoader) waterfallLoader.style.display = 'none';
+
+        if (data.entries && data.entries.length > 0) {
+          renderWaterfallEntries(data.entries);
+        }
+
+        if (!data.hasMore) {
+          waterfallHasMore = false;
+          if (waterfallEnd) waterfallEnd.style.display = '';
+        }
+      })
+      .catch(function() {
+        waterfallLoading = false;
+        if (waterfallLoader) waterfallLoader.style.display = 'none';
+      });
+  }
+
+  // 滚动检测 — 实际滚动容器是 #notesTimeline（overflow-y: auto）
+  var scrollHandler = null;
+  var scrollTarget = document.getElementById('notesTimeline');
+
+  function setupScrollListener() {
+    if (scrollHandler || !scrollTarget) return;
+    scrollHandler = function() {
+      if (currentMode !== 'waterfall') return;
+      var el = scrollTarget;
+      // 距底部 300px 时加载下一页
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300) {
+        loadNextPage();
+      }
+    };
+    scrollTarget.addEventListener('scroll', scrollHandler, { passive: true });
+  }
+
+  function removeScrollListener() {
+    if (scrollHandler && scrollTarget) {
+      scrollTarget.removeEventListener('scroll', scrollHandler);
+      scrollHandler = null;
+    }
+  }
+
+  function applyMode(mode) {
+    currentMode = mode;
+    localStorage.setItem(VIEW_KEY, mode);
+
+    if (mode === 'waterfall') {
+      paginationContainer.style.display = 'none';
+      waterfallContainer.style.display = '';
+      viewToggleLabel.textContent = '分页';
+      viewToggleBtn.classList.add('active');
+
+      // 首次加载
+      if (waterfallPage === 0) {
+        loadNextPage();
+      }
+      setupScrollListener();
+    } else {
+      waterfallContainer.style.display = 'none';
+      paginationContainer.style.display = '';
+      viewToggleLabel.textContent = '瀑布流';
+      viewToggleBtn.classList.remove('active');
+      removeScrollListener();
+    }
+  }
+
+  viewToggleBtn.addEventListener('click', function() {
+    var next = currentMode === 'waterfall' ? 'pagination' : 'waterfall';
+    applyMode(next);
+  });
+
+  // 初始化
+  applyMode(currentMode);
+
+  // 覆盖 toggleNoteEdit 以支持瀑布流前缀
+  var _origToggle = window.toggleNoteEdit;
+  window.toggleNoteEdit = function(dateStr, noteIndex, prefix) {
+    prefix = prefix || '';
+    var displayEl = document.getElementById(prefix + 'note-display-' + dateStr + '-' + noteIndex);
+    var editEl = document.getElementById(prefix + 'note-edit-' + dateStr + '-' + noteIndex);
+    if (!displayEl || !editEl) {
+      // 回退到原始逻辑
+      if (_origToggle) return _origToggle(dateStr, noteIndex);
+      return;
+    }
+
+    var isEditing = !editEl.classList.contains('hidden');
+    if (isEditing) {
+      editEl.classList.add('hidden');
+      displayEl.style.display = '';
+      return;
+    }
+
+    var openedForms = document.querySelectorAll('.note-edit-form:not(.hidden)');
+    openedForms.forEach(function(formEl) { formEl.classList.add('hidden'); });
+    var openedDisplays = document.querySelectorAll('.note-display[style*="display: none"]');
+    openedDisplays.forEach(function(d) { d.style.display = ''; });
+
+    editEl.classList.remove('hidden');
+    displayEl.style.display = 'none';
+
+    var textarea = editEl.querySelector('textarea[name="content"]');
+    if (textarea) {
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
+  };
+})();
+</script>

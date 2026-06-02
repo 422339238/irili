@@ -1,0 +1,1508 @@
+<%
+  const dayNames = ['一', '二', '三', '四', '五', '六', '日'];
+
+  function monthLabel(year, month) {
+    return year + '年' + month + '月';
+  }
+
+  function displayDate(dateStr) {
+    const parts = dateStr.split('-');
+    return parseInt(parts[1]) + '/' + parseInt(parts[2]);
+  }
+
+  function formatWeatherTime(isoStr) {
+    if (!isoStr) {
+      return '';
+    }
+    const date = new Date(isoStr);
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+    return String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+  }
+
+  function weatherTone(iconCode) {
+    const code = parseInt(iconCode, 10);
+    if (Number.isNaN(code)) {
+      return 'muted';
+    }
+
+    if (code === 100 || (code >= 150 && code <= 154)) {
+      return 'sun';
+    }
+    if (code >= 101 && code <= 104) {
+      return 'cloud';
+    }
+    if (code >= 200 && code <= 213) {
+      return 'wind';
+    }
+    if ((code >= 300 && code <= 313) || (code >= 350 && code <= 399)) {
+      return 'rain';
+    }
+    if (code >= 400 && code <= 499) {
+      return 'snow';
+    }
+    if (code >= 500 && code <= 515) {
+      return 'fog';
+    }
+
+    return 'cloud';
+  }
+%>
+
+<div class="app-layout theme-apple">
+  <div class="theme-orb theme-orb-a" aria-hidden="true"></div>
+  <div class="theme-orb theme-orb-b" aria-hidden="true"></div>
+  <div class="theme-orb theme-orb-c" aria-hidden="true"></div>
+  <div class="main-content">
+    <aside class="todo-panel" id="todoPanel">
+      <div class="panel-header" id="panelToggle">
+        <h2>Todo</h2>
+        <div class="panel-header-actions">
+          <button type="button" class="panel-icon-btn" id="addTodoQuickBtn" title="快速添加">＋</button>
+          <a href="/kanban" class="panel-icon-btn" title="看板视图" style="text-decoration:none;">▦</a>
+          <a href="/notes" class="panel-icon-btn" title="笔记" style="text-decoration:none;">📝</a>
+          <% if (!user.isAdmin) { %>
+            <form method="POST" action="/logout" class="inline-form">
+              <button type="submit" class="panel-icon-btn" title="退出">⎋</button>
+            </form>
+          <% } %>
+          <span class="collapse-icon" id="collapseIcon">◀</span>
+        </div>
+      </div>
+
+      <div class="panel-body" id="panelBody">
+        <div class="filter-bar">
+          <a href="/?month=<%= currentMonth %>&filter=all"
+             class="filter-btn <%= filter === 'all' ? 'active' : '' %>">
+            全部 <span class="badge"><%= stats.total %></span>
+          </a>
+          <a href="/?month=<%= currentMonth %>&filter=active"
+             class="filter-btn <%= filter === 'active' ? 'active' : '' %>">
+            进行中 <span class="badge"><%= stats.active %></span>
+          </a>
+          <a href="/?month=<%= currentMonth %>&filter=completed"
+             class="filter-btn <%= filter === 'completed' ? 'active' : '' %>">
+            已完成 <span class="badge"><%= stats.completed %></span>
+          </a>
+        </div>
+
+        <ul class="todo-list">
+          <% if (todos.length === 0) { %>
+            <li class="empty-state">
+              <p>暂无任务</p>
+              <p class="empty-hint">在上方添加你的第一个任务！</p>
+            </li>
+          <% } %>
+          <% todos.forEach(function(todo, index) { %>
+            <% const isOverdue = todo.due_date && todo.due_date < today && !todo.completed; %>
+            <% const subtasks = subtasksByParent[todo.id] || []; %>
+            <li class="todo-item <%= todo.completed ? 'completed' : '' %> <%= isOverdue ? 'overdue' : '' %> <%= todo.priority ? 'important' : '' %> <%= index === 0 ? 'top-rank-1' : '' %> <%= index === 1 ? 'top-rank-2' : '' %> <%= index === 2 ? 'top-rank-3' : '' %>" data-id="<%= todo.id %>">
+              <div class="todo-main">
+                <form method="POST" action="/todos/<%= todo.id %>/update" class="inline-form">
+                  <input type="hidden" name="month" value="<%= currentMonth %>">
+                  <input type="hidden" name="completed" value="<%= todo.completed ? 0 : 1 %>">
+                  <button type="submit" class="btn-check <%= todo.completed ? 'checked' : '' %>" title="切换">
+                    <%= todo.completed ? '☑' : '☐' %>
+                  </button>
+                </form>
+
+                <span class="todo-title"><%= todo.title %></span>
+
+                <% if (todo.due_date) { %>
+                  <span class="due-badge <%= isOverdue ? 'overdue-badge' : '' %>">
+                    <%= displayDate(todo.due_date) %>
+                  </span>
+                <% } %>
+                <span class="due-badge" title="项目周期"><%= todo.project_duration || 1 %>天</span>
+
+                <div class="todo-actions">
+                  <button
+                    type="button"
+                    class="btn-icon btn-sub-toggle"
+                    id="sub-toggle-<%= todo.id %>"
+                    onclick="toggleSubtasks(<%= todo.id %>)"
+                    title="展开下级"
+                  >
+                    ▸ <%= subtasks.length %>
+                  </button>
+                  <form method="POST" action="/todos/<%= todo.id %>/priority" class="inline-form">
+                    <input type="hidden" name="month" value="<%= currentMonth %>">
+                    <button type="submit" class="btn-icon btn-priority <%= todo.priority ? 'active' : '' %>" title="<%= todo.priority ? '取消重要' : '标记重要' %>"><%= todo.priority ? '置顶' : '重要' %></button>
+                  </form>
+                  <button type="button" class="btn-icon btn-edit" onclick="toggleEdit(<%= todo.id %>)" title="编辑">✎</button>
+                  <form method="POST" action="/todos/<%= todo.id %>/delete" class="inline-form">
+                    <input type="hidden" name="month" value="<%= currentMonth %>">
+                    <button type="submit" class="btn-icon btn-delete" title="删除">✕</button>
+                  </form>
+                </div>
+              </div>
+
+              <div class="edit-form" id="edit-<%= todo.id %>" style="display:none;">
+                <form method="POST" action="/todos/<%= todo.id %>/update" class="edit-form-body">
+                  <input type="hidden" name="month" value="<%= currentMonth %>">
+                  <div class="edit-row edit-row-title">
+                    <input type="text" name="title" value="<%= todo.title %>" maxlength="500" class="input-title" required>
+                  </div>
+                  <div class="edit-row edit-row-actions">
+                    <input type="date" name="due_date" value="<%= todo.due_date || '' %>" class="input-date">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                      <input type="number" name="project_duration" value="<%= todo.project_duration || 1 %>" min="0.5" step="0.5" class="input-date" style="width:70px;" title="项目周期(天)">
+                      <span style="font-size:13px;color:#86868b;">天</span>
+                    </div>
+                    <button type="submit" class="btn-save">保存</button>
+                    <button type="button" class="btn-cancel" onclick="toggleEdit(<%= todo.id %>)">取消</button>
+                  </div>
+                </form>
+              </div>
+
+              <div class="subtask-panel" id="subtasks-<%= todo.id %>" style="display:none;">
+                <form method="POST" action="/todos" class="subtask-form">
+                  <input type="hidden" name="month" value="<%= currentMonth %>">
+                  <input type="hidden" name="client_today" value="<%= today %>">
+                  <input type="hidden" name="parent_id" value="<%= todo.id %>">
+                  <input type="text" name="title" placeholder="添加下级信息..." maxlength="500" required class="input-title">
+                  <div class="subtask-meta-row">
+                    <input type="date" name="due_date" value="<%= today %>" class="input-date js-default-today">
+                    <button type="submit" class="btn-save">添加</button>
+                  </div>
+                </form>
+
+                <ul class="subtask-list">
+                  <% subtasks.forEach(function(subtask) { %>
+                    <% const isSubOverdue = subtask.due_date && subtask.due_date < today && !subtask.completed; %>
+                    <li class="subtask-item <%= subtask.completed ? 'completed' : '' %> <%= isSubOverdue ? 'overdue' : '' %>">
+                      <form method="POST" action="/todos/<%= subtask.id %>/update" class="inline-form">
+                        <input type="hidden" name="month" value="<%= currentMonth %>">
+                        <input type="hidden" name="completed" value="<%= subtask.completed ? 0 : 1 %>">
+                        <button type="submit" class="btn-check <%= subtask.completed ? 'checked' : '' %>" title="切换">
+                          <%= subtask.completed ? '☑' : '☐' %>
+                        </button>
+                      </form>
+
+                      <span class="todo-title"><%= subtask.title %></span>
+
+                      <% if (subtask.due_date) { %>
+                        <span class="due-badge <%= isSubOverdue ? 'overdue-badge' : '' %>">
+                          <%= displayDate(subtask.due_date) %>
+                        </span>
+                      <% } %>
+
+                      <form method="POST" action="/todos/<%= subtask.id %>/delete" class="inline-form">
+                        <input type="hidden" name="month" value="<%= currentMonth %>">
+                        <button type="submit" class="btn-icon btn-delete" title="删除">✕</button>
+                      </form>
+                    </li>
+                  <% }); %>
+                </ul>
+              </div>
+            </li>
+          <% }); %>
+        </ul>
+
+        <div class="todo-stats">
+          共 <%= stats.total %> 项 · <%= stats.active %> 进行中 · <%= stats.completed %> 已完成
+        </div>
+      </div>
+    </aside>
+
+    <section class="calendar-panel">
+      <div class="month-nav">
+        <div class="month-nav-main">
+          <a href="/?month=<%= prevMonth %>&filter=<%= filter %>" class="btn-nav" title="上一月">←</a>
+          <a href="/?month=<%= nextMonth %>&filter=<%= filter %>" class="btn-nav" title="下一月">→</a>
+          <span class="month-label"><%= monthLabel(monthYear, monthNum) %></span>
+        </div>
+        <div class="month-nav-right">
+          <a href="/settings" class="panel-icon-btn nav-settings-btn" title="设置">⚙</a>
+          <span class="topbar-user">
+            <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="12" cy="8" r="4"/><path d="M12 14c-6 0-8 3-8 3v1h16v-1s-2-3-8-3z"/></svg>
+            <%= user.username %>
+          </span>
+          <% const weatherTitle = weather && weather.available
+            ? ('天气：' + (weather.locationName || weather.location) + ' ' + weather.text + ' ' + weather.temp + '°' + (weather.lastFetchedAt ? ' · 更新于 ' + formatWeatherTime(weather.lastFetchedAt) : ''))
+            : (weather && weather.message ? weather.message : '天气加载中'); %>
+          <% const topbarWeatherTone = weather && weather.available ? weatherTone(weather.iconCode) : 'muted'; %>
+          <span class="topbar-weather <%= weather && weather.available ? '' : 'topbar-weather-muted' %>" title="<%= weatherTitle %>">
+            <img
+              class="topbar-weather-icon weather-icon-tone-<%= topbarWeatherTone %>"
+              src="<%= weather && weather.iconUrl ? weather.iconUrl : '/icons/weather/999.svg' %>"
+              alt=""
+              aria-hidden="true"
+              loading="lazy"
+            >
+            <% if (weather && weather.available) { %>
+              <span class="topbar-weather-city"><%= weather.locationName || weather.location %></span>
+              <span class="topbar-weather-temp"><%= weather.temp %>°</span>
+              <span class="topbar-weather-text"><%= weather.text %></span>
+            <% } else { %>
+              <span class="topbar-weather-text"><%= weather ? weather.message : '天气加载中' %></span>
+            <% } %>
+          </span>
+        </div>
+      </div>
+
+      <div class="calendar-month show-holidays" id="calendarMonth">
+        <div class="calendar-header-row">
+          <% dayNames.forEach(function(name, i) { %>
+            <div class="calendar-header-cell <%= (i >= 5) ? 'weekend-header' : '' %>"><%= name %></div>
+          <% }); %>
+        </div>
+
+        <div class="calendar-body">
+          <% for (var c = 0; c < firstDayOffset; c++) { %>
+            <div class="calendar-day-cell empty-cell"></div>
+          <% } %>
+
+          <% monthDates.forEach(function(dateStr, idx) { %>
+            <% const isToday = dateStr === today; %>
+            <% const dateNum = parseInt(dateStr.split('-')[2]); %>
+            <% const colIndex = (firstDayOffset + idx) % 7; %>
+            <% const isWeekend = colIndex >= 5; %>
+            <% const holidayName = holidayMap[dateStr] || ''; %>
+            <% const holidayStatus = holidayStatusMap && holidayStatusMap[dateStr] ? holidayStatusMap[dateStr] : null; %>
+            <% const isPastDay = dateStr < today; %>
+            <% const dayTodos = todosByDate[dateStr] || []; %>
+            <% const dayNotes = notesByDate && notesByDate[dateStr] ? notesByDate[dateStr] : []; %>
+            <% const dayCollapseLimit = 8; %>
+            <% const dayEntries = []; %>
+            <% dayNotes.forEach(function(note) { dayEntries.push({ kind: 'note', note: note }); }); %>
+            <% dayTodos.forEach(function(todo) { dayEntries.push({ kind: 'todo', todo: todo }); }); %>
+            <% const visibleEntries = dayEntries.slice(0, dayCollapseLimit); %>
+            <% const hiddenEntries = dayEntries.slice(dayCollapseLimit); %>
+            <% const dayWeather = calendarWeatherMap && calendarWeatherMap[dateStr] ? calendarWeatherMap[dateStr] : null; %>
+            <% const solarTermName = solarTermMap && solarTermMap[dateStr] ? solarTermMap[dateStr] : ''; %>
+            <% const traditionalFestivalName = traditionalFestivalMap && traditionalFestivalMap[dateStr] ? traditionalFestivalMap[dateStr] : ''; %>
+            <% const dayWeatherTitle = dayWeather
+              ? ('天气：' + dayWeather.text + ' ' + dayWeather.tempRange + (dayWeather.approximate ? '（近似）' : ''))
+              : ''; %>
+            <% const dayWeatherTone = dayWeather ? weatherTone(dayWeather.iconCode) : 'muted'; %>
+            <div
+              class="calendar-day-cell <%= isToday ? 'today-cell' : '' %> <%= isWeekend ? 'weekend-col' : '' %> <%= dayEntries.length === 0 ? 'no-todos' : '' %> <%= isPastDay ? 'past-day' : '' %> js-calendar-add-target"
+              data-date="<%= dateStr %>"
+            >
+              <div class="day-header <%= hiddenEntries.length > 0 ? 'day-header-toggle' : '' %> <%= dayWeather ? 'has-day-weather' : '' %>" <%= hiddenEntries.length > 0 ? 'onclick="toggleDayTodos(\'' + dateStr + '\')"' : '' %>>
+                <span class="day-num <%= isToday ? 'today-num' : '' %>"><%= dateNum %></span>
+                <% if (solarTermName || traditionalFestivalName || holidayName) { %>
+                  <div class="day-festivals-group">
+                    <% if (solarTermName) { %>
+                      <span class="day-solar-term"><%= solarTermName %></span>
+                    <% } %>
+                    <% if (traditionalFestivalName) { %>
+                      <span class="day-traditional-festival"><%= traditionalFestivalName %></span>
+                    <% } %>
+                    <% if (holidayName) { %>
+                      <span class="day-holiday day-holiday-festival"><%= holidayName %></span>
+                    <% } %>
+                  </div>
+                <% } %>
+                <% if (dayWeather) { %>
+                  <span class="day-weather" title="<%= dayWeatherTitle %>">
+                    <span class="day-weather-main">
+                      <img
+                        class="day-weather-icon weather-icon-tone-<%= dayWeatherTone %>"
+                        src="<%= dayWeather.iconUrl %>"
+                        alt=""
+                        aria-hidden="true"
+                        loading="lazy"
+                      >
+                      <span class="day-weather-text"><%= dayWeather.text %></span>
+                    </span>
+                    <span class="day-weather-temp-main"><%= dayWeather.tempRange %></span>
+                  </span>
+                <% } %>
+              </div>
+              <div
+                class="day-body <%= hiddenEntries.length > 0 ? 'collapsed' : '' %>"
+                id="day-body-<%= dateStr %>"
+              >
+                <% visibleEntries.forEach(function(entry) { %>
+                  <% if (entry.kind === 'note') { %>
+                    <% const notePreview = ((entry.note.content || '').replace(/\s+/g, ' ').trim()) || '笔记'; %>
+                    <div class="cal-note" title="<%= entry.note.content || '' %>">
+                      <% if (entry.note.time) { %>
+                        <span class="cal-note-time"><%= entry.note.time %></span>
+                      <% } %>
+                      <span class="cal-note-content"><%= notePreview %></span>
+                    </div>
+                  <% } else { %>
+                    <% const calOverdue = entry.todo.due_date < today && !entry.todo.completed; %>
+                    <div class="cal-todo <%= entry.todo.completed ? 'cal-done' : '' %> <%= calOverdue ? 'cal-overdue' : '' %>">
+                      <form method="POST" action="/todos/<%= entry.todo.id %>/update" class="inline-form">
+                        <input type="hidden" name="month" value="<%= currentMonth %>">
+                        <input type="hidden" name="completed" value="<%= entry.todo.completed ? 0 : 1 %>">
+                        <button type="submit" class="cal-check" title="切换">
+                          <%= entry.todo.completed ? '☑' : '☐' %>
+                        </button>
+                      </form>
+                      <span class="cal-title" title="<%= entry.todo.title %>"><%= entry.todo.title %></span>
+                    </div>
+                  <% } %>
+                <% }); %>
+
+                <% if (hiddenEntries.length > 0) { %>
+                  <div class="day-hidden-list">
+                    <% hiddenEntries.forEach(function(entry) { %>
+                      <% if (entry.kind === 'note') { %>
+                        <% const notePreview = ((entry.note.content || '').replace(/\s+/g, ' ').trim()) || '笔记'; %>
+                        <div class="cal-note" title="<%= entry.note.content || '' %>">
+                          <% if (entry.note.time) { %>
+                            <span class="cal-note-time"><%= entry.note.time %></span>
+                          <% } %>
+                          <span class="cal-note-content"><%= notePreview %></span>
+                        </div>
+                      <% } else { %>
+                        <% const calOverdue = entry.todo.due_date < today && !entry.todo.completed; %>
+                        <div class="cal-todo <%= entry.todo.completed ? 'cal-done' : '' %> <%= calOverdue ? 'cal-overdue' : '' %>">
+                          <form method="POST" action="/todos/<%= entry.todo.id %>/update" class="inline-form">
+                            <input type="hidden" name="month" value="<%= currentMonth %>">
+                            <input type="hidden" name="completed" value="<%= entry.todo.completed ? 0 : 1 %>">
+                            <button type="submit" class="cal-check" title="切换">
+                              <%= entry.todo.completed ? '☑' : '☐' %>
+                            </button>
+                          </form>
+                          <span class="cal-title" title="<%= entry.todo.title %>"><%= entry.todo.title %></span>
+                        </div>
+                      <% } %>
+                    <% }); %>
+                  </div>
+                <% } %>
+              </div>
+              <% if (hiddenEntries.length > 0) { %>
+                <button
+                  type="button"
+                  class="day-todo-toggle"
+                  id="day-toggle-<%= dateStr %>"
+                  onclick="toggleDayTodos('<%= dateStr %>')"
+                  data-expand-label="展开 +<%= hiddenEntries.length %>"
+                  data-collapse-label="收起"
+                >
+                  展开 +<%= hiddenEntries.length %>
+                </button>
+              <% } %>
+              <% if (holidayStatus) { %>
+                <span
+                  class="day-work-rest-badge <%= holidayStatus.isOffDay ? 'rest' : 'work' %>"
+                  title="<%= holidayStatus.name %> · <%= holidayStatus.isOffDay ? '法定休息' : '调休上班' %>"
+                >
+                  <%= holidayStatus.isOffDay ? '休' : '班' %>
+                </span>
+              <% } %>
+            </div>
+          <% }); %>
+
+          <% var trailingCells = (7 - (firstDayOffset + monthDates.length) % 7) % 7; %>
+          <% for (var t = 0; t < trailingCells; t++) { %>
+            <div class="calendar-day-cell empty-cell"></div>
+          <% } %>
+        </div>
+      </div>
+
+      <div class="settings-modal-overlay hidden" id="addTodoOverlay">
+        <div class="settings-modal calendar-quick-add-modal" role="dialog" aria-modal="true">
+          <div class="settings-modal-header">
+            <h3>添加新任务</h3>
+            <button type="button" class="settings-modal-close" id="addTodoCloseBtn" aria-label="关闭">×</button>
+          </div>
+          <div class="settings-modal-body">
+            <form method="POST" action="/todos" id="addTodoForm" class="calendar-quick-add-form">
+              <input type="hidden" name="month" value="<%= currentMonth %>">
+              <input type="hidden" name="client_today" value="<%= today %>" id="addTodoClientToday">
+              <div class="calendar-quick-add-field">
+                <label for="addTodoTitleInput" class="calendar-quick-add-label">任务内容</label>
+                <input type="text" id="addTodoTitleInput" name="title" maxlength="500" required class="input-title" placeholder="输入任务标题...">
+              </div>
+              <div class="calendar-quick-add-field">
+                <label for="addTodoDateInput" class="calendar-quick-add-label">日期</label>
+                <input type="date" id="addTodoDateInput" name="due_date" value="<%= today %>" class="input-date js-default-today">
+              </div>
+              <div class="calendar-quick-add-field">
+                <label class="calendar-quick-add-label">项目周期</label>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <input type="number" name="project_duration" value="1" min="0.5" step="0.5" class="input-date" style="width:80px;">
+                  <span>天</span>
+                </div>
+              </div>
+              <div class="calendar-quick-add-actions">
+                <button type="button" class="btn-cancel" id="addTodoCancelBtn">取消</button>
+                <button type="submit" class="btn-save">添加</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-modal-overlay hidden" id="calendarQuickAddOverlay">
+        <div class="settings-modal calendar-quick-add-modal" role="dialog" aria-modal="true" aria-labelledby="calendarQuickAddTitle">
+          <div class="settings-modal-header">
+            <h3 id="calendarQuickAddTitle">快速记录</h3>
+            <button type="button" class="settings-modal-close" id="calendarQuickAddCloseBtn" aria-label="关闭">×</button>
+          </div>
+          <div class="settings-modal-body">
+            <div class="quick-add-tabs">
+              <button type="button" class="quick-add-tab active" data-tab="task">任务</button>
+              <button type="button" class="quick-add-tab" data-tab="note">想法</button>
+            </div>
+
+            <div class="quick-add-panel" id="quickAddTaskPanel">
+              <form method="POST" action="/todos" id="calendarQuickAddForm" class="calendar-quick-add-form">
+                <input type="hidden" name="month" value="<%= currentMonth %>">
+                <input type="hidden" name="client_today" value="<%= today %>" id="calendarQuickAddClientToday">
+                <input type="hidden" name="completed" value="1">
+                <div class="calendar-quick-add-field">
+                  <label for="calendarQuickAddTitleInput" class="calendar-quick-add-label">任务内容</label>
+                  <input type="text" id="calendarQuickAddTitleInput" name="title" maxlength="500" required class="input-title" placeholder="输入已完成的任务...">
+                </div>
+                <div class="calendar-quick-add-field">
+                  <label for="calendarQuickAddDateInput" class="calendar-quick-add-label">日期</label>
+                  <input type="date" id="calendarQuickAddDateInput" name="due_date" class="input-date js-default-today">
+                </div>
+                <div class="calendar-quick-add-field">
+                  <label class="calendar-quick-add-label">项目周期</label>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <input type="number" name="project_duration" value="1" min="0.5" step="0.5" class="input-date" style="width:80px;">
+                    <span>天</span>
+                  </div>
+                </div>
+                <div class="calendar-quick-add-actions">
+                  <button type="button" class="btn-cancel" id="calendarQuickAddCancelBtn">取消</button>
+                  <button type="submit" class="btn-save">保存</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="quick-add-panel hidden" id="quickAddNotePanel">
+              <form method="POST" action="/notes" id="calendarQuickAddNoteForm" class="calendar-quick-add-form">
+                <input type="hidden" name="month" value="<%= currentMonth %>">
+                <input type="hidden" name="redirect" value="calendar">
+                <input type="hidden" name="client_time" value="" id="calendarQuickAddNoteClientTime">
+                <div class="calendar-quick-add-field">
+                  <label class="calendar-quick-add-label">内容</label>
+                  <textarea name="content" rows="4" class="notes-textarea" placeholder="记录你的想法..." required id="calendarQuickAddNoteContentInput"></textarea>
+                </div>
+                <div class="calendar-quick-add-field">
+                  <label class="calendar-quick-add-label">日期</label>
+                  <input type="date" name="date" class="input-date js-default-today" id="calendarQuickAddNoteDateInput">
+                </div>
+                <div class="calendar-quick-add-actions">
+                  <button type="submit" class="btn-save">提交</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="/js/draft-storage.js?v=20260416a"></script>
+<script>
+  var toggle = document.getElementById('panelToggle');
+  var icon = document.getElementById('collapseIcon');
+  var panel = document.getElementById('todoPanel');
+  var addTodoQuickBtn = document.getElementById('addTodoQuickBtn');
+  var calendarMonth = document.getElementById('calendarMonth');
+  var calendarBody = document.querySelector('.calendar-body');
+  var calendarQuickAddOverlay = document.getElementById('calendarQuickAddOverlay');
+  var calendarQuickAddForm = document.getElementById('calendarQuickAddForm');
+  var calendarQuickAddCloseBtn = document.getElementById('calendarQuickAddCloseBtn');
+  var calendarQuickAddCancelBtn = document.getElementById('calendarQuickAddCancelBtn');
+  var calendarQuickAddTitleInput = document.getElementById('calendarQuickAddTitleInput');
+  var calendarQuickAddDateInput = document.getElementById('calendarQuickAddDateInput');
+  var calendarQuickAddClientToday = document.getElementById('calendarQuickAddClientToday');
+  var calendarQuickAddNoteForm = document.getElementById('calendarQuickAddNoteForm');
+  var calendarQuickAddNoteContentInput = document.getElementById('calendarQuickAddNoteContentInput');
+  var calendarQuickAddNoteDateInput = document.getElementById('calendarQuickAddNoteDateInput');
+  var quickAddTaskPanel = document.getElementById('quickAddTaskPanel');
+  var quickAddNotePanel = document.getElementById('quickAddNotePanel');
+  var quickAddTabs = document.querySelectorAll('#calendarQuickAddOverlay .quick-add-tab[data-tab]');
+  var quickAddDefaultTabs = document.querySelectorAll('#quickAddDefaultTabs .quick-add-tab');
+  var quickAddDefaultTabStatus = document.getElementById('quickAddDefaultTabStatus');
+  var openSettingsBtn = document.getElementById('openSettingsBtn');
+  var settingsModalOverlay = document.getElementById('settingsModalOverlay');
+  var closeSettingsBtn = document.getElementById('closeSettingsBtn');
+  var holidayVisibleSwitch = document.getElementById('holidayVisibleSwitch');
+  var manualSyncBtn = document.getElementById('manualSyncBtn');
+  var manualSyncStatus = document.getElementById('manualSyncStatus');
+  var weatherAutoFetchSwitch = document.getElementById('weatherAutoFetchSwitch');
+  var weatherAutoFetchStatus = document.getElementById('weatherAutoFetchStatus');
+  var weatherUsageMeta = document.getElementById('weatherUsageMeta');
+  var weatherCityInput = document.getElementById('weatherCityInput');
+  var weatherCityResults = document.getElementById('weatherCityResults');
+  var weatherCityHistoryEl = document.getElementById('weatherCityHistory');
+  var saveWeatherCityBtn = document.getElementById('saveWeatherCityBtn');
+  var weatherCityStatus = document.getElementById('weatherCityStatus');
+  var toggleCalendarWeatherBtn = document.getElementById('toggleCalendarWeatherBtn');
+  var calendarWeatherStatus = document.getElementById('calendarWeatherStatus');
+  var currentWeatherCity = document.getElementById('currentWeatherCity');
+  var currentWeatherLocationId = document.getElementById('currentWeatherLocationId');
+  var weatherInitial = <%- JSON.stringify({
+    locationId: weather && weather.location ? weather.location : '',
+    locationName: weather && weather.locationName ? weather.locationName : '',
+    cityHistory: weatherCityHistory || []
+  }) %>;
+  var selectedWeatherCityId = weatherInitial.locationId || '';
+  var weatherCitySearchTimer = null;
+  var settingsModalOpenedAt = 0;
+  var calendarQuickAddOpenedAt = 0;
+  var addTodoOverlay = document.getElementById('addTodoOverlay');
+  var addTodoForm = document.getElementById('addTodoForm');
+  var addTodoCloseBtn = document.getElementById('addTodoCloseBtn');
+  var addTodoCancelBtn = document.getElementById('addTodoCancelBtn');
+  var addTodoTitleInput = document.getElementById('addTodoTitleInput');
+  var addTodoDateInput = document.getElementById('addTodoDateInput');
+  var addTodoClientToday = document.getElementById('addTodoClientToday');
+  var calendarWeekRowsRafId = null;
+  var CALENDAR_WEATHER_VISIBLE_KEY = 'calendarWeatherVisible';
+  var CALENDAR_QUICK_ADD_DEFAULT_TAB_KEY = 'calendarQuickAddDefaultTab';
+  var CALENDAR_QUICK_ADD_DRAFT_KEY = 'draft:calendar-quick-add';
+  var calendarWeatherVisible = true;
+  var calendarQuickAddDefaultTab = 'task';
+
+  function getDraftStore() {
+    return window.DraftStorage || null;
+  }
+
+  function getCalendarQuickAddDraft() {
+    var store = getDraftStore();
+    return store ? store.get(CALENDAR_QUICK_ADD_DRAFT_KEY) : {};
+  }
+
+  function updateCalendarQuickAddDraft(partial) {
+    var store = getDraftStore();
+    if (!store) {
+      return getCalendarQuickAddDraft();
+    }
+    return store.patch(CALENDAR_QUICK_ADD_DRAFT_KEY, partial);
+  }
+
+  function clearCalendarQuickAddDraft(fields) {
+    var store = getDraftStore();
+    if (!store) {
+      return getCalendarQuickAddDraft();
+    }
+    return store.clearFields(CALENDAR_QUICK_ADD_DRAFT_KEY, fields);
+  }
+
+  function getCalendarQuickAddActiveTab() {
+    var activeTab = document.querySelector('#calendarQuickAddOverlay .quick-add-tab.active[data-tab]');
+    return activeTab && activeTab.dataset.tab === 'note' ? 'note' : 'task';
+  }
+
+  function getSavedCalendarQuickAddDefaultTab() {
+    try {
+      var savedTab = window.localStorage.getItem(CALENDAR_QUICK_ADD_DEFAULT_TAB_KEY);
+      return savedTab === 'note' ? 'note' : 'task';
+    } catch (storageError) {
+      return 'task';
+    }
+  }
+
+  function updateCalendarQuickAddDefaultTabUI() {
+    quickAddDefaultTabs.forEach(function(tabBtn) {
+      tabBtn.classList.toggle('active', tabBtn.dataset.defaultTab === calendarQuickAddDefaultTab);
+    });
+
+    if (quickAddDefaultTabStatus) {
+      quickAddDefaultTabStatus.textContent = calendarQuickAddDefaultTab === 'note'
+        ? '默认打开：想法'
+        : '默认打开：任务';
+      quickAddDefaultTabStatus.className = 'settings-sync-status success';
+    }
+  }
+
+  function setCalendarQuickAddDefaultTab(tabName) {
+    calendarQuickAddDefaultTab = tabName === 'note' ? 'note' : 'task';
+
+    try {
+      window.localStorage.setItem(CALENDAR_QUICK_ADD_DEFAULT_TAB_KEY, calendarQuickAddDefaultTab);
+    } catch (storageError) {
+      // ignore localStorage errors
+    }
+
+    updateCalendarQuickAddDefaultTabUI();
+    return calendarQuickAddDefaultTab;
+  }
+
+  function syncCalendarQuickAddDraftFromInputs() {
+    return updateCalendarQuickAddDraft({
+      taskTitle: calendarQuickAddTitleInput ? calendarQuickAddTitleInput.value : '',
+      noteContent: calendarQuickAddNoteContentInput ? calendarQuickAddNoteContentInput.value : '',
+      activeTab: getCalendarQuickAddActiveTab()
+    });
+  }
+
+  function applyCalendarQuickAddTab(tabName, persistDraft) {
+    var nextTab = tabName === 'note' ? 'note' : 'task';
+
+    quickAddTabs.forEach(function(tab) {
+      tab.classList.toggle('active', tab.dataset.tab === nextTab);
+    });
+
+    if (quickAddTaskPanel && quickAddNotePanel) {
+      quickAddTaskPanel.classList.toggle('hidden', nextTab !== 'task');
+      quickAddNotePanel.classList.toggle('hidden', nextTab !== 'note');
+    }
+
+    if (persistDraft) {
+      updateCalendarQuickAddDraft({ activeTab: nextTab });
+    }
+
+    return nextTab;
+  }
+
+  function getLocalTodayIso() {
+    var now = new Date();
+    return now.getFullYear()
+      + '-'
+      + String(now.getMonth() + 1).padStart(2, '0')
+      + '-'
+      + String(now.getDate()).padStart(2, '0');
+  }
+
+  function updateCalendarWeekRows() {
+    if (!calendarMonth || !calendarBody) {
+      return;
+    }
+
+    var cellCount = calendarBody.querySelectorAll('.calendar-day-cell').length;
+    if (!cellCount) {
+      return;
+    }
+
+    var weekRows = Math.max(4, Math.ceil(cellCount / 7));
+    var weekRowsValue = String(weekRows);
+    calendarMonth.style.setProperty('--calendar-week-rows', weekRowsValue);
+    calendarBody.style.setProperty('--calendar-week-rows', weekRowsValue);
+  }
+
+  function scheduleCalendarWeekRowsUpdate() {
+    if (calendarWeekRowsRafId !== null) {
+      return;
+    }
+
+    var schedule = window.requestAnimationFrame || function(callback) {
+      return window.setTimeout(callback, 16);
+    };
+
+    calendarWeekRowsRafId = schedule(function() {
+      calendarWeekRowsRafId = null;
+      updateCalendarWeekRows();
+    });
+  }
+
+  var panelHeaderActionNodes = document.querySelectorAll('.panel-header-actions .panel-icon-btn, .panel-header-actions form');
+  panelHeaderActionNodes.forEach(function(node) {
+    node.addEventListener('click', function(event) {
+      event.stopPropagation();
+    });
+  });
+
+  toggle.addEventListener('click', function() {
+    var collapsed = panel.classList.toggle('collapsed');
+    icon.textContent = collapsed ? '▶' : '◀';
+    scheduleCalendarWeekRowsUpdate();
+  });
+
+  if (addTodoQuickBtn && addTodoOverlay) {
+    addTodoQuickBtn.addEventListener('click', function() {
+      if (addTodoDateInput) {
+        addTodoDateInput.value = getLocalTodayIso();
+      }
+      if (addTodoClientToday) {
+        addTodoClientToday.value = getLocalTodayIso();
+      }
+      addTodoOverlay.classList.remove('hidden');
+      setTimeout(function() {
+        if (addTodoTitleInput) addTodoTitleInput.focus();
+      }, 100);
+    });
+  }
+
+  function closeAddTodoModal() {
+    if (!addTodoOverlay) return;
+    addTodoOverlay.classList.add('hidden');
+    if (addTodoForm) addTodoForm.reset();
+  }
+
+  if (addTodoCloseBtn) {
+    addTodoCloseBtn.addEventListener('click', function(e) { e.preventDefault(); closeAddTodoModal(); });
+  }
+  if (addTodoCancelBtn) {
+    addTodoCancelBtn.addEventListener('click', function(e) { e.preventDefault(); closeAddTodoModal(); });
+  }
+  if (addTodoOverlay) {
+    addTodoOverlay.addEventListener('click', function(e) {
+      if (e.target === addTodoOverlay) closeAddTodoModal();
+    });
+  }
+  if (addTodoForm) {
+    addTodoForm.addEventListener('submit', function() {
+      if (addTodoDateInput && !addTodoDateInput.value) {
+        addTodoDateInput.value = getLocalTodayIso();
+      }
+      if (addTodoClientToday) {
+        addTodoClientToday.value = getLocalTodayIso();
+      }
+    });
+  }
+
+  window.addEventListener('resize', scheduleCalendarWeekRowsUpdate);
+
+  function closeCalendarQuickAdd() {
+    if (!calendarQuickAddOverlay || calendarQuickAddOverlay.classList.contains('hidden')) {
+      return;
+    }
+    syncCalendarQuickAddDraftFromInputs();
+    calendarQuickAddOverlay.classList.add('hidden');
+    if (calendarQuickAddForm) {
+      calendarQuickAddForm.reset();
+    }
+    if (calendarQuickAddNoteForm) {
+      calendarQuickAddNoteForm.reset();
+    }
+    applyCalendarQuickAddTab('task', false);
+  }
+
+  function openCalendarQuickAdd(clickedDate) {
+    if (!calendarQuickAddOverlay || !calendarQuickAddTitleInput || !calendarQuickAddDateInput) {
+      return;
+    }
+    var localToday = clickedDate || getLocalTodayIso();
+    calendarQuickAddOpenedAt = Date.now();
+    calendarQuickAddDateInput.value = localToday;
+    if (calendarQuickAddClientToday) {
+      calendarQuickAddClientToday.value = getLocalTodayIso();
+    }
+    if (calendarQuickAddNoteDateInput) {
+      calendarQuickAddNoteDateInput.value = localToday;
+    }
+    var draft = getCalendarQuickAddDraft();
+    if (calendarQuickAddTitleInput) {
+      calendarQuickAddTitleInput.value = draft.taskTitle || '';
+    }
+    if (calendarQuickAddNoteContentInput) {
+      calendarQuickAddNoteContentInput.value = draft.noteContent || '';
+    }
+    calendarQuickAddOverlay.classList.remove('hidden');
+
+    var activeTab = calendarQuickAddDefaultTab;
+    if (draft.activeTab === 'note' || draft.activeTab === 'task') {
+      activeTab = draft.activeTab;
+    } else if (draft.noteContent) {
+      activeTab = 'note';
+    } else if (draft.taskTitle) {
+      activeTab = 'task';
+    }
+    applyCalendarQuickAddTab(activeTab, false);
+
+    setTimeout(function() {
+      if (activeTab === 'note' && calendarQuickAddNoteContentInput) {
+        calendarQuickAddNoteContentInput.focus();
+        return;
+      }
+      calendarQuickAddTitleInput.focus();
+    }, 0);
+  }
+
+  if (calendarMonth && calendarQuickAddOverlay) {
+    calendarMonth.addEventListener('click', function(event) {
+      var target = event.target;
+      if (!target || !target.closest) {
+        return;
+      }
+
+      if (target.closest('.day-header-toggle, .day-todo-toggle, .cal-todo, .cal-note, .cal-check, form, button, a, input, label')) {
+        return;
+      }
+
+      var dayCell = target.closest('.js-calendar-add-target');
+      if (!dayCell || dayCell.classList.contains('empty-cell')) {
+        return;
+      }
+
+      var clickedDate = dayCell.dataset.date || getLocalTodayIso();
+      openCalendarQuickAdd(clickedDate);
+    });
+  }
+
+  if (calendarQuickAddCloseBtn) {
+    calendarQuickAddCloseBtn.addEventListener('click', function(event) {
+      event.preventDefault();
+      closeCalendarQuickAdd();
+    });
+  }
+
+  if (calendarQuickAddCancelBtn) {
+    calendarQuickAddCancelBtn.addEventListener('click', function(event) {
+      event.preventDefault();
+      closeCalendarQuickAdd();
+    });
+  }
+
+  // Tab switching logic for quick-add overlay
+  quickAddTabs.forEach(function(tabBtn) {
+    tabBtn.addEventListener('click', function() {
+      var tabName = tabBtn.dataset.tab;
+      applyCalendarQuickAddTab(tabName, true);
+      setCalendarQuickAddDefaultTab(tabName);
+      if (tabName === 'task') {
+        if (calendarQuickAddTitleInput) calendarQuickAddTitleInput.focus();
+      } else if (calendarQuickAddNoteContentInput) {
+        calendarQuickAddNoteContentInput.focus();
+      }
+    });
+  });
+
+  quickAddDefaultTabs.forEach(function(tabBtn) {
+    tabBtn.addEventListener('click', function() {
+      setCalendarQuickAddDefaultTab(tabBtn.dataset.defaultTab);
+    });
+  });
+
+  if (calendarQuickAddTitleInput) {
+    calendarQuickAddTitleInput.addEventListener('input', function() {
+      syncCalendarQuickAddDraftFromInputs();
+    });
+  }
+
+  if (calendarQuickAddNoteContentInput) {
+    calendarQuickAddNoteContentInput.addEventListener('input', function() {
+      syncCalendarQuickAddDraftFromInputs();
+    });
+  }
+
+  if (calendarQuickAddOverlay) {
+    calendarQuickAddOverlay.addEventListener('click', function(event) {
+      if (event.target !== calendarQuickAddOverlay) {
+        return;
+      }
+      if (Date.now() - calendarQuickAddOpenedAt < 200) {
+        return;
+      }
+      closeCalendarQuickAdd();
+    });
+  }
+
+  if (calendarQuickAddForm) {
+    calendarQuickAddForm.addEventListener('submit', function() {
+      if (calendarQuickAddDateInput && !calendarQuickAddDateInput.value) {
+        calendarQuickAddDateInput.value = getLocalTodayIso();
+      }
+      if (calendarQuickAddClientToday) {
+        calendarQuickAddClientToday.value = getLocalTodayIso();
+      }
+      clearCalendarQuickAddDraft(['taskTitle']);
+      var nextDraft = getCalendarQuickAddDraft();
+      if (nextDraft.noteContent) {
+        updateCalendarQuickAddDraft({ activeTab: 'note' });
+      } else {
+        clearCalendarQuickAddDraft(['activeTab']);
+      }
+    });
+  }
+
+  // Set client local time for note form submission
+  if (calendarQuickAddNoteForm) {
+    calendarQuickAddNoteForm.addEventListener('submit', function() {
+      var clientTimeInput = document.getElementById('calendarQuickAddNoteClientTime');
+      if (clientTimeInput) {
+        var now = new Date();
+        clientTimeInput.value = String(now.getHours()).padStart(2, '0')
+          + ':' + String(now.getMinutes()).padStart(2, '0');
+      }
+      if (calendarQuickAddNoteDateInput && !calendarQuickAddNoteDateInput.value) {
+        calendarQuickAddNoteDateInput.value = getLocalTodayIso();
+      }
+      clearCalendarQuickAddDraft(['noteContent']);
+      var nextDraft = getCalendarQuickAddDraft();
+      if (nextDraft.taskTitle) {
+        updateCalendarQuickAddDraft({ activeTab: 'task' });
+      } else {
+        clearCalendarQuickAddDraft(['activeTab']);
+      }
+    });
+  }
+
+  document.addEventListener('keydown', function(event) {
+    if (event.key !== 'Escape') {
+      return;
+    }
+    closeCalendarQuickAdd();
+    closeAddTodoModal();
+  });
+
+  // Enter to auto-save for note textareas
+  document.addEventListener('keydown', function(event) {
+    if (event.key !== 'Enter') return;
+    if (event.shiftKey) return;
+    var target = event.target;
+    if (!target || target.tagName !== 'TEXTAREA') return;
+    if (!target.classList.contains('notes-textarea')) return;
+    event.preventDefault();
+    var content = target.value.trim();
+    if (!content) return;
+    var form = target.closest('form');
+    if (form) form.submit();
+  });
+
+  function applyCalendarWeatherVisibility() {
+    if (!calendarMonth) {
+      return;
+    }
+    calendarMonth.classList.toggle('hide-day-weather', !calendarWeatherVisible);
+  }
+
+  function updateCalendarWeatherToggleUI() {
+    if (toggleCalendarWeatherBtn) {
+      toggleCalendarWeatherBtn.textContent = calendarWeatherVisible ? '一键关闭天气显示' : '一键开启天气显示';
+    }
+
+    if (calendarWeatherStatus) {
+      calendarWeatherStatus.textContent = calendarWeatherVisible ? '日历天气：已开启' : '日历天气：已关闭';
+      calendarWeatherStatus.className = calendarWeatherVisible
+        ? 'settings-sync-status success'
+        : 'settings-sync-status';
+    }
+  }
+
+  try {
+    var savedCalendarWeatherVisible = window.localStorage.getItem(CALENDAR_WEATHER_VISIBLE_KEY);
+    if (savedCalendarWeatherVisible === '0') {
+      calendarWeatherVisible = false;
+    } else if (savedCalendarWeatherVisible === '1') {
+      calendarWeatherVisible = true;
+    }
+  } catch (storageError) {
+    // ignore localStorage errors
+  }
+
+  calendarQuickAddDefaultTab = getSavedCalendarQuickAddDefaultTab();
+  updateCalendarQuickAddDefaultTabUI();
+
+  applyCalendarWeatherVisibility();
+  updateCalendarWeatherToggleUI();
+
+  if (toggleCalendarWeatherBtn && calendarMonth) {
+    toggleCalendarWeatherBtn.addEventListener('click', function() {
+      calendarWeatherVisible = !calendarWeatherVisible;
+      applyCalendarWeatherVisibility();
+      updateCalendarWeatherToggleUI();
+
+      try {
+        window.localStorage.setItem(CALENDAR_WEATHER_VISIBLE_KEY, calendarWeatherVisible ? '1' : '0');
+      } catch (storageError) {
+        // ignore localStorage errors
+      }
+    });
+  }
+
+  function toggleEdit(id) {
+    var el = document.getElementById('edit-' + id);
+    if (el) {
+      el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    }
+  }
+
+  function toggleSubtasks(id) {
+    var panelEl = document.getElementById('subtasks-' + id);
+    var toggleEl = document.getElementById('sub-toggle-' + id);
+    if (!panelEl || !toggleEl) {
+      return;
+    }
+
+    var isHidden = panelEl.style.display === 'none';
+    panelEl.style.display = isHidden ? 'block' : 'none';
+    toggleEl.classList.toggle('open', isHidden);
+    toggleEl.title = isHidden ? '收起下级' : '展开下级';
+  }
+
+  function toggleDayTodos(dayKey) {
+    var bodyEl = document.getElementById('day-body-' + dayKey);
+    var toggleEl = document.getElementById('day-toggle-' + dayKey);
+    if (!bodyEl || !toggleEl) {
+      return;
+    }
+
+    var willExpand = !bodyEl.classList.contains('expanded');
+    if (willExpand) {
+      var expandedBodies = document.querySelectorAll('.day-body.expanded');
+      expandedBodies.forEach(function(el) {
+        if (el === bodyEl) {
+          return;
+        }
+
+        el.classList.remove('expanded');
+        el.classList.add('collapsed');
+
+        var otherDayKey = el.id.replace('day-body-', '');
+        var otherToggle = document.getElementById('day-toggle-' + otherDayKey);
+        if (otherToggle) {
+          otherToggle.textContent = otherToggle.dataset.expandLabel;
+        }
+      });
+    }
+
+    var expanded = bodyEl.classList.toggle('expanded');
+    bodyEl.classList.toggle('collapsed', !expanded);
+    toggleEl.textContent = expanded ? toggleEl.dataset.collapseLabel : toggleEl.dataset.expandLabel;
+  }
+
+  if (holidayVisibleSwitch && calendarMonth) {
+    holidayVisibleSwitch.addEventListener('change', function() {
+      calendarMonth.classList.toggle('show-holidays', holidayVisibleSwitch.checked);
+    });
+  }
+
+  if (openSettingsBtn && settingsModalOverlay && closeSettingsBtn) {
+    var settingsModal = settingsModalOverlay.querySelector('.settings-modal');
+
+    openSettingsBtn.addEventListener('click', function(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      settingsModalOpenedAt = Date.now();
+      settingsModalOverlay.classList.remove('hidden');
+    });
+
+    closeSettingsBtn.addEventListener('click', function(event) {
+      event.preventDefault();
+      settingsModalOverlay.classList.add('hidden');
+    });
+
+    if (settingsModal) {
+      settingsModal.addEventListener('click', function(event) {
+        event.stopPropagation();
+      });
+    }
+
+    settingsModalOverlay.addEventListener('click', function(event) {
+      if (event.target !== settingsModalOverlay) {
+        return;
+      }
+      if (Date.now() - settingsModalOpenedAt < 200) {
+        return;
+      }
+      settingsModalOverlay.classList.add('hidden');
+    });
+  }
+
+  if (manualSyncBtn && manualSyncStatus) {
+    manualSyncBtn.addEventListener('click', async function() {
+      manualSyncBtn.disabled = true;
+      manualSyncStatus.textContent = '更新中...';
+      manualSyncStatus.className = 'settings-sync-status';
+
+      try {
+        var response = await fetch('/admin/settings/holiday-sync', {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        });
+        var payload = null;
+        try {
+          payload = await response.json();
+        } catch (jsonError) {
+          payload = { ok: false, message: '更新失败，请稍后重试。' };
+        }
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload && payload.message ? payload.message : '更新失败');
+        }
+        manualSyncStatus.textContent = '更新成功';
+        manualSyncStatus.className = 'settings-sync-status success';
+      } catch (error) {
+        manualSyncStatus.textContent = error.message || '更新失败';
+        manualSyncStatus.className = 'settings-sync-status error';
+      } finally {
+        manualSyncBtn.disabled = false;
+      }
+    });
+  }
+
+  // ---- 修改密码 ----
+  var changePwdToggle = document.getElementById('changePwdToggle');
+  var changePwdFormEl = document.getElementById('changePwdForm');
+  var changePwdArrow = document.getElementById('changePwdArrow');
+  if (changePwdToggle && changePwdFormEl) {
+    changePwdToggle.addEventListener('click', function() {
+      var hidden = changePwdFormEl.style.display === 'none';
+      changePwdFormEl.style.display = hidden ? 'flex' : 'none';
+      changePwdArrow.textContent = hidden ? '▼' : '▶';
+    });
+  }
+
+  var changePwdBtn = document.getElementById('changePwdBtn');
+  var changePwdStatus = document.getElementById('changePwdStatus');
+  if (changePwdBtn) {
+    changePwdBtn.addEventListener('click', async function() {
+      var oldPwd = document.getElementById('changePwdOld').value;
+      var newPwd = document.getElementById('changePwdNew').value;
+      var confirmPwd = document.getElementById('changePwdConfirm').value;
+
+      changePwdStatus.textContent = '';
+      changePwdStatus.className = 'settings-sync-status';
+
+      if (!oldPwd || !newPwd || !confirmPwd) {
+        changePwdStatus.textContent = '请填写所有字段';
+        changePwdStatus.className = 'settings-sync-status error';
+        return;
+      }
+      if (newPwd !== confirmPwd) {
+        changePwdStatus.textContent = '两次输入的新密码不一致';
+        changePwdStatus.className = 'settings-sync-status error';
+        return;
+      }
+      if (newPwd.length < 6) {
+        changePwdStatus.textContent = '新密码不能少于6位';
+        changePwdStatus.className = 'settings-sync-status error';
+        return;
+      }
+      if (!/[a-zA-Z]/.test(newPwd) || !/[0-9]/.test(newPwd)) {
+        changePwdStatus.textContent = '密码必须包含字母和数字';
+        changePwdStatus.className = 'settings-sync-status error';
+        return;
+      }
+
+      changePwdBtn.disabled = true;
+      changePwdStatus.textContent = '提交中...';
+      try {
+        var resp = await fetch('/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ old_password: oldPwd, new_password: newPwd, confirm_password: confirmPwd })
+        });
+        var data = await resp.json();
+        if (resp.ok && data.success) {
+          changePwdStatus.textContent = '密码修改成功';
+          changePwdStatus.className = 'settings-sync-status success';
+          document.getElementById('changePwdOld').value = '';
+          document.getElementById('changePwdNew').value = '';
+          document.getElementById('changePwdConfirm').value = '';
+        } else {
+          changePwdStatus.textContent = data.error || '修改失败';
+          changePwdStatus.className = 'settings-sync-status error';
+        }
+      } catch (err) {
+        changePwdStatus.textContent = '网络错误';
+        changePwdStatus.className = 'settings-sync-status error';
+      } finally {
+        changePwdBtn.disabled = false;
+      }
+    });
+  }
+
+  function updateWeatherUsageMeta(requestCount, maxRequests, limitReached) {
+    if (!weatherUsageMeta) {
+      return;
+    }
+
+    var safeRequestCount = Number.isFinite(requestCount) ? requestCount : 0;
+    var safeMaxRequests = Number.isFinite(maxRequests) && maxRequests > 0 ? maxRequests : 1000;
+    var safeLimitReached = Boolean(limitReached) || safeRequestCount >= safeMaxRequests;
+    var remaining = Math.max(safeMaxRequests - safeRequestCount, 0);
+
+    weatherUsageMeta.textContent = safeLimitReached
+      ? ('今日已请求 ' + safeRequestCount + '/' + safeMaxRequests + ' 次，已达今日上限，明日自动重置。')
+      : ('今日已请求 ' + safeRequestCount + '/' + safeMaxRequests + ' 次，剩余 ' + remaining + ' 次。');
+  }
+
+  if (weatherAutoFetchSwitch && weatherAutoFetchStatus) {
+    weatherAutoFetchSwitch.addEventListener('change', async function() {
+      var nextEnabled = weatherAutoFetchSwitch.checked;
+      weatherAutoFetchSwitch.disabled = true;
+      weatherAutoFetchStatus.textContent = '保存中...';
+      weatherAutoFetchStatus.className = 'settings-sync-status';
+
+      try {
+        var response = await fetch('/admin/settings/weather-auto-fetch', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: JSON.stringify({ enabled: nextEnabled })
+        });
+
+        var payload = null;
+        try {
+          payload = await response.json();
+        } catch (jsonError) {
+          payload = { ok: false, message: '保存失败，请稍后重试。' };
+        }
+
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload && payload.message ? payload.message : '保存失败');
+        }
+
+        weatherAutoFetchSwitch.checked = Boolean(payload.enabled);
+        updateWeatherUsageMeta(payload.requestCount, payload.maxRequests, payload.limitReached);
+
+        if (payload.limitReached) {
+          weatherAutoFetchStatus.textContent = '已达今日上限，明日重置';
+          weatherAutoFetchStatus.className = 'settings-sync-status error';
+        } else {
+          weatherAutoFetchStatus.textContent = payload.enabled ? '已开启' : '已关闭';
+          weatherAutoFetchStatus.className = 'settings-sync-status success';
+        }
+      } catch (error) {
+        weatherAutoFetchSwitch.checked = !nextEnabled;
+        weatherAutoFetchStatus.textContent = error.message || '保存失败';
+        weatherAutoFetchStatus.className = 'settings-sync-status error';
+      } finally {
+        weatherAutoFetchSwitch.disabled = false;
+      }
+    });
+  }
+
+  function clearWeatherCityResults() {
+    if (!weatherCityResults) {
+      return;
+    }
+    weatherCityResults.innerHTML = '';
+    weatherCityResults.classList.add('hidden');
+  }
+
+  function renderWeatherCityResults(locations) {
+    if (!weatherCityResults) {
+      return;
+    }
+
+    weatherCityResults.innerHTML = '';
+    var list = Array.isArray(locations) ? locations : [];
+    if (list.length === 0) {
+      var emptyEl = document.createElement('div');
+      emptyEl.className = 'weather-city-empty';
+      emptyEl.textContent = '未找到匹配城市';
+      weatherCityResults.appendChild(emptyEl);
+      weatherCityResults.classList.remove('hidden');
+      return;
+    }
+
+    list.forEach(function(item) {
+      var optionBtn = document.createElement('button');
+      optionBtn.type = 'button';
+      optionBtn.className = 'weather-city-option';
+      optionBtn.dataset.locationId = item.id;
+      optionBtn.dataset.locationName = item.nameZh || item.nameEn || item.id;
+      optionBtn.textContent = item.label || ((item.nameZh || item.nameEn || item.id) + ' (' + item.id + ')');
+      weatherCityResults.appendChild(optionBtn);
+    });
+
+    weatherCityResults.classList.remove('hidden');
+  }
+
+  async function searchWeatherCities(keyword) {
+    if (!weatherCityResults) {
+      return;
+    }
+
+    var q = String(keyword || '').trim();
+    if (!q) {
+      clearWeatherCityResults();
+      return;
+    }
+
+    weatherCityResults.innerHTML = '<div class="weather-city-empty">搜索中...</div>';
+    weatherCityResults.classList.remove('hidden');
+
+    try {
+      var response = await fetch('/admin/settings/weather-locations?q=' + encodeURIComponent(q), {
+        method: 'GET',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      });
+      var payload = null;
+      try {
+        payload = await response.json();
+      } catch (jsonError) {
+        payload = { ok: false, message: '城市搜索失败' };
+      }
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload && payload.message ? payload.message : '城市搜索失败');
+      }
+      renderWeatherCityResults(payload.locations || []);
+    } catch (error) {
+      weatherCityResults.innerHTML = '<div class="weather-city-empty">城市搜索失败</div>';
+      weatherCityResults.classList.remove('hidden');
+    }
+  }
+
+  if (weatherCityInput) {
+    weatherCityInput.value = weatherInitial.locationName || weatherInitial.locationId || '';
+
+    weatherCityInput.addEventListener('input', function() {
+      selectedWeatherCityId = '';
+      if (weatherCitySearchTimer) {
+        clearTimeout(weatherCitySearchTimer);
+      }
+      weatherCitySearchTimer = setTimeout(function() {
+        searchWeatherCities(weatherCityInput.value);
+      }, 250);
+    });
+
+    weatherCityInput.addEventListener('focus', function() {
+      if (weatherCityInput.value.trim()) {
+        searchWeatherCities(weatherCityInput.value);
+      }
+    });
+  }
+
+  if (weatherCityResults) {
+    weatherCityResults.addEventListener('click', function(event) {
+      var target = event.target && event.target.closest ? event.target.closest('.weather-city-option') : null;
+      if (!target) {
+        return;
+      }
+
+      selectedWeatherCityId = target.dataset.locationId || '';
+      var selectedName = target.dataset.locationName || selectedWeatherCityId;
+      weatherCityInput.value = selectedName;
+      clearWeatherCityResults();
+
+      if (weatherCityStatus) {
+        weatherCityStatus.textContent = '已选择：' + selectedName + ' (' + selectedWeatherCityId + ')';
+        weatherCityStatus.className = 'settings-sync-status';
+      }
+    });
+  }
+
+  document.addEventListener('click', function(event) {
+    if (!weatherCityResults || !weatherCityInput) {
+      return;
+    }
+
+    if (weatherCityResults.contains(event.target) || event.target === weatherCityInput) {
+      return;
+    }
+    clearWeatherCityResults();
+  });
+
+  function renderCityHistoryTags(historyList) {
+    if (!weatherCityHistoryEl) return;
+    weatherCityHistoryEl.innerHTML = '';
+    var list = Array.isArray(historyList) ? historyList : [];
+    list.forEach(function(city) {
+      var tag = document.createElement('span');
+      tag.className = 'weather-city-tag';
+      tag.dataset.locationId = city.location_id;
+      tag.dataset.locationName = city.location_name;
+      tag.textContent = city.location_name;
+      var removeBtn = document.createElement('span');
+      removeBtn.className = 'weather-city-tag-remove';
+      removeBtn.dataset.locationId = city.location_id;
+      removeBtn.innerHTML = '&times;';
+      tag.appendChild(removeBtn);
+      weatherCityHistoryEl.appendChild(tag);
+    });
+  }
+
+  if (weatherCityHistoryEl) {
+    weatherCityHistoryEl.addEventListener('click', async function(event) {
+      var removeBtn = event.target.closest('.weather-city-tag-remove');
+      if (removeBtn) {
+        event.stopPropagation();
+        var locId = removeBtn.dataset.locationId;
+        if (!locId) return;
+        try {
+          await fetch('/admin/settings/weather-city-history/' + encodeURIComponent(locId), {
+            method: 'DELETE',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+          });
+          var tag = removeBtn.closest('.weather-city-tag');
+          if (tag) tag.remove();
+        } catch (e) {}
+        return;
+      }
+
+      var tag = event.target.closest('.weather-city-tag');
+      if (!tag) return;
+      var locationId = tag.dataset.locationId;
+      var locationName = tag.dataset.locationName;
+      if (!locationId) return;
+
+      selectedWeatherCityId = locationId;
+      if (weatherCityInput) weatherCityInput.value = locationName || locationId;
+      if (saveWeatherCityBtn) saveWeatherCityBtn.click();
+    });
+  }
+
+  if (saveWeatherCityBtn && weatherCityStatus && weatherCityInput) {
+    saveWeatherCityBtn.addEventListener('click', async function() {
+      var rawInput = weatherCityInput.value.trim();
+      var locationId = selectedWeatherCityId || (/^\d+$/.test(rawInput) ? rawInput : '');
+      if (!locationId) {
+        weatherCityStatus.textContent = '请先在列表中选择城市，或输入有效城市ID';
+        weatherCityStatus.className = 'settings-sync-status error';
+        return;
+      }
+
+      saveWeatherCityBtn.disabled = true;
+      weatherCityInput.disabled = true;
+      weatherCityStatus.textContent = '切换中...';
+      weatherCityStatus.className = 'settings-sync-status';
+
+      try {
+        var response = await fetch('/admin/settings/weather-location', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: JSON.stringify({ locationId: locationId })
+        });
+
+        var payload = null;
+        try {
+          payload = await response.json();
+        } catch (jsonError) {
+          payload = { ok: false, message: '切换城市失败，请稍后重试。' };
+        }
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload && payload.message ? payload.message : '切换城市失败');
+        }
+
+        selectedWeatherCityId = payload.locationId || locationId;
+        weatherCityInput.value = payload.locationName || selectedWeatherCityId;
+
+        if (currentWeatherCity) {
+          currentWeatherCity.textContent = payload.locationName || selectedWeatherCityId;
+        }
+        if (currentWeatherLocationId) {
+          currentWeatherLocationId.textContent = selectedWeatherCityId;
+        }
+
+        if (payload.cityHistory) {
+          renderCityHistoryTags(payload.cityHistory);
+        }
+
+        weatherCityStatus.textContent = '城市已切换，正在刷新天气...';
+        weatherCityStatus.className = 'settings-sync-status success';
+        setTimeout(function() {
+          window.location.reload();
+        }, 400);
+      } catch (error) {
+        weatherCityStatus.textContent = error.message || '切换城市失败';
+        weatherCityStatus.className = 'settings-sync-status error';
+      } finally {
+        saveWeatherCityBtn.disabled = false;
+        weatherCityInput.disabled = false;
+      }
+    });
+  }
+
+  var localToday = getLocalTodayIso();
+
+  var clientTodayInputs = document.querySelectorAll('input[name="client_today"]');
+  clientTodayInputs.forEach(function(inputEl) {
+    inputEl.value = localToday;
+  });
+
+  var defaultTodayDateInputs = document.querySelectorAll('input.js-default-today');
+  defaultTodayDateInputs.forEach(function(inputEl) {
+    inputEl.value = localToday;
+  });
+
+  scheduleCalendarWeekRowsUpdate();
+</script>

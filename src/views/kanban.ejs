@@ -1,0 +1,634 @@
+<%
+  function displayDate(dateStr) {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    return parseInt(parts[1]) + '/' + parseInt(parts[2]);
+  }
+
+  function formatLifecycleTime(dateStr) {
+    if (!dateStr) return '';
+    const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateStr)
+      ? dateStr.replace(' ', 'T') + 'Z'
+      : dateStr;
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) return '';
+    return (date.getMonth() + 1) + '/' + date.getDate()
+      + ' ' + String(date.getHours()).padStart(2, '0')
+      + ':' + String(date.getMinutes()).padStart(2, '0');
+  }
+%>
+
+<div class="app-layout theme-apple">
+  <div class="theme-orb theme-orb-a" aria-hidden="true"></div>
+  <div class="theme-orb theme-orb-b" aria-hidden="true"></div>
+  <div class="theme-orb theme-orb-c" aria-hidden="true"></div>
+
+  <div class="kanban-wrapper">
+    <div class="kanban-topbar">
+      <div class="kanban-topbar-left">
+        <a href="/" class="kanban-back-link">← 任务列表</a>
+        <a href="/notes" class="kanban-back-link">📝 笔记</a>
+        <h1 class="kanban-title">看板</h1>
+      </div>
+      <div class="kanban-topbar-center">
+        <button type="button" class="kanban-add-btn" id="kanbanAddTodoBtn">+ 新任务</button>
+        <button type="button" class="kanban-add-btn kanban-add-note-btn" id="kanbanAddNoteBtn">+ 新笔记</button>
+      </div>
+      <div class="kanban-topbar-right">
+      </div>
+    </div>
+
+    <div class="kanban-board">
+      <%
+        var columns = [
+          { key: 'todo', label: '待办', items: todoItems, color: 'blue' },
+          { key: 'in_progress', label: '进行中', items: inProgressItems, color: 'yellow' },
+          { key: 'done', label: '已完成', items: doneItems, color: 'green' }
+        ];
+      %>
+      <% columns.forEach(function(col) { %>
+        <div class="kanban-column" data-status="<%= col.key %>">
+          <div class="kanban-column-header kanban-column-header--<%= col.color %>">
+            <span class="kanban-column-title"><%= col.label %><span class="kanban-column-toggle">▼</span></span>
+            <span class="kanban-column-count" id="count-<%= col.key %>"><%= col.items.length %></span>
+          </div>
+          <div class="kanban-card-list" id="list-<%= col.key %>">
+            <% col.items.forEach(function(item, itemIdx) { %>
+              <% var priorityClass = (col.key === 'todo' || col.key === 'in_progress') ? ' kanban-card--p' + Math.min(itemIdx + 1, 4) : ''; %>
+              <div class="kanban-card<%= item.priority ? ' kanban-card--priority' : '' %><%= item.completed ? ' kanban-card--done' : '' %><%= (item.due_date && item.due_date < today && !item.completed) ? ' kanban-card--overdue' : '' %><%= priorityClass %>" data-id="<%= item.id %>" data-title="<%= item.title %>" data-due-date="<%= item.due_date || '' %>" data-duration="<%= item.project_duration || 1 %>" data-created-at="<%= item.created_at || '' %>" data-in-progress-at="<%= item.in_progress_at || '' %>" data-completed-at="<%= item.completed_at || '' %>">
+                <div class="kanban-card-title"><%= item.title %></div>
+                <div class="kanban-card-bottom">
+                  <span class="kanban-card-time kanban-card-time--primary">添加时间：<%= formatLifecycleTime(item.created_at) %></span>
+                  <span class="kanban-card-bottom-right">
+                    <% if (item.due_date) { %>
+                      <span class="kanban-card-date<%= (item.due_date < today && !item.completed) ? ' kanban-card-date--overdue' : '' %>">
+                        📅 <%= displayDate(item.due_date) %>
+                      </span>
+                    <% } %>
+                    <% if (item.project_duration && item.project_duration !== 1) { %>
+                      <span class="kanban-card-duration">⏱ <%= item.project_duration %>天</span>
+                    <% } else { %>
+                      <span class="kanban-card-duration">⏱ 1天</span>
+                    <% } %>
+                  </span>
+                </div>
+                <div class="kanban-card-times">
+                  <% if (item.in_progress_at) { %>
+                    <div class="kanban-card-time">进行中时间：<%= formatLifecycleTime(item.in_progress_at) %></div>
+                  <% } %>
+                  <% if (item.completed_at) { %>
+                    <div class="kanban-card-time">完成时间：<%= formatLifecycleTime(item.completed_at) %></div>
+                  <% } %>
+                </div>
+              </div>
+            <% }); %>
+          </div>
+        </div>
+      <% }); %>
+    </div>
+  </div>
+</div>
+
+<!-- 添加任务模态框 -->
+<div class="settings-modal-overlay hidden" id="kanbanAddTodoOverlay">
+  <div class="settings-modal calendar-quick-add-modal" role="dialog" aria-modal="true">
+    <div class="settings-modal-header">
+      <h3>添加新任务</h3>
+      <button type="button" class="settings-modal-close" id="kanbanAddTodoCloseBtn" aria-label="关闭">×</button>
+    </div>
+    <div class="settings-modal-body">
+      <form method="POST" action="/todos" class="calendar-quick-add-form">
+        <input type="hidden" name="redirect" value="kanban">
+        <div class="calendar-quick-add-field">
+          <label class="calendar-quick-add-label">标题</label>
+          <input type="text" name="title" placeholder="输入任务标题..." maxlength="500" required class="input-title" id="kanbanTodoTitleInput">
+        </div>
+        <div class="calendar-quick-add-field">
+          <label class="calendar-quick-add-label">日期</label>
+          <input type="date" name="due_date" value="<%= today %>" class="input-date">
+        </div>
+        <div class="calendar-quick-add-field">
+          <label class="calendar-quick-add-label">项目周期</label>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <input type="number" name="project_duration" value="1" min="0.5" step="0.5" class="input-date" style="width:80px;">
+            <span>天</span>
+          </div>
+        </div>
+        <div class="calendar-quick-add-actions">
+          <button type="button" class="btn-cancel" id="kanbanAddTodoCancelBtn">取消</button>
+          <button type="submit" class="btn-save">添加</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- 添加笔记模态框 -->
+<div class="settings-modal-overlay hidden" id="kanbanAddNoteOverlay">
+  <div class="settings-modal calendar-quick-add-modal" role="dialog" aria-modal="true">
+    <div class="settings-modal-header">
+      <h3>添加新笔记</h3>
+      <button type="button" class="settings-modal-close" id="kanbanAddNoteCloseBtn" aria-label="关闭">×</button>
+    </div>
+    <div class="settings-modal-body">
+      <form method="POST" action="/notes" class="calendar-quick-add-form">
+        <input type="hidden" name="redirect" value="kanban">
+        <div class="calendar-quick-add-field">
+          <label class="calendar-quick-add-label">内容</label>
+          <textarea name="content" rows="4" class="notes-textarea" placeholder="记录你的想法..." required id="kanbanNoteContentInput"></textarea>
+        </div>
+        <div class="calendar-quick-add-field">
+          <label class="calendar-quick-add-label">日期</label>
+          <input type="date" name="date" value="<%= today %>" class="input-date">
+        </div>
+        <div class="calendar-quick-add-actions">
+          <button type="button" class="btn-cancel" id="kanbanAddNoteCancelBtn">取消</button>
+          <button type="submit" class="btn-save">保存笔记</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑任务模态框 -->
+<div class="settings-modal-overlay hidden" id="kanbanEditTodoOverlay">
+  <div class="settings-modal calendar-quick-add-modal" role="dialog" aria-modal="true">
+    <div class="settings-modal-header">
+      <h3>编辑任务</h3>
+      <button type="button" class="settings-modal-close" id="kanbanEditTodoCloseBtn" aria-label="关闭">×</button>
+    </div>
+    <div class="settings-modal-body">
+      <form id="kanbanEditTodoForm" class="calendar-quick-add-form">
+        <input type="hidden" id="kanbanEditTodoId">
+        <div class="calendar-quick-add-field">
+          <label class="calendar-quick-add-label">标题</label>
+          <input type="text" id="kanbanEditTitleInput" maxlength="500" required class="input-title">
+        </div>
+        <div class="calendar-quick-add-field">
+          <label class="calendar-quick-add-label">日期</label>
+          <input type="date" id="kanbanEditDateInput" class="input-date">
+        </div>
+        <div class="calendar-quick-add-field">
+          <label class="calendar-quick-add-label">项目周期</label>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <input type="number" id="kanbanEditDurationInput" value="1" min="0.5" step="0.5" class="input-date" style="width:80px;">
+            <span>天</span>
+          </div>
+        </div>
+        <div class="calendar-quick-add-actions">
+          <button type="button" class="btn-cancel" id="kanbanEditTodoCancelBtn">取消</button>
+          <button type="submit" class="btn-save">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+<script src="/js/draft-storage.js?v=20260416a"></script>
+<script>
+(function() {
+  // Disable pull-to-refresh on kanban page
+  document.body.style.overscrollBehavior = 'contain';
+
+  var columns = ['todo', 'in_progress', 'done'];
+
+  var isMobile = window.innerWidth <= 900;
+
+  function parseLifecycleTimestamp(value) {
+    if (!value) return null;
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
+      return new Date(value.replace(' ', 'T') + 'Z');
+    }
+    var parsed = new Date(value);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  function pad2(value) {
+    return String(value).padStart(2, '0');
+  }
+
+  function formatLifecycleTimestamp(value) {
+    var date = parseLifecycleTimestamp(value);
+    if (!date) return '';
+    return (date.getMonth() + 1) + '/' + date.getDate() + ' ' + pad2(date.getHours()) + ':' + pad2(date.getMinutes());
+  }
+
+  function renderLifecycleTimes(cardEl) {
+    if (!cardEl) return;
+
+    // Update primary time in bottom row
+    var bottomRow = cardEl.querySelector('.kanban-card-bottom');
+    if (bottomRow) {
+      var primaryTime = bottomRow.querySelector('.kanban-card-time--primary');
+      var createdAtText = formatLifecycleTimestamp(cardEl.dataset.createdAt);
+      if (primaryTime && createdAtText) {
+        primaryTime.textContent = '添加时间：' + createdAtText;
+      }
+    }
+
+    // Update secondary times
+    var container = cardEl.querySelector('.kanban-card-times');
+    if (!container) return;
+
+    var items = [];
+    var inProgressAtText = formatLifecycleTimestamp(cardEl.dataset.inProgressAt);
+    var completedAtText = formatLifecycleTimestamp(cardEl.dataset.completedAt);
+
+    if (inProgressAtText) {
+      items.push({ text: '进行中时间：' + inProgressAtText });
+    }
+    if (completedAtText) {
+      items.push({ text: '完成时间：' + completedAtText });
+    }
+
+    container.innerHTML = '';
+    items.forEach(function(item) {
+      var row = document.createElement('div');
+      row.className = 'kanban-card-time';
+      row.textContent = item.text;
+      container.appendChild(row);
+    });
+  }
+
+  // Mobile column toggle (expand/collapse)
+  document.querySelectorAll('.kanban-column-header').forEach(function(header) {
+    header.addEventListener('click', function(e) {
+      if (window.innerWidth > 900) return;
+      // Don't toggle if clicking inside a button or link
+      if (e.target.closest('button, a')) return;
+      var col = header.closest('.kanban-column');
+      col.classList.toggle('collapsed');
+    });
+  });
+
+  // Default collapse "done" column on mobile
+  if (isMobile) {
+    var doneCol = document.querySelector('.kanban-column[data-status="done"]');
+    if (doneCol) doneCol.classList.add('collapsed');
+  }
+
+  function updateCounts() {
+    columns.forEach(function(status) {
+      var list = document.getElementById('list-' + status);
+      var count = document.getElementById('count-' + status);
+      if (list && count) {
+        count.textContent = list.children.length;
+      }
+    });
+  }
+
+  function updateCardClasses(cardEl, newStatus) {
+    cardEl.classList.remove('kanban-card--done');
+    if (newStatus === 'done') {
+      cardEl.classList.add('kanban-card--done');
+    }
+
+    var dueDate = cardEl.getAttribute('data-due-date');
+    var isOverdue = !!(dueDate && dueDate < '<%= today %>' && newStatus !== 'done');
+    var dateEl = cardEl.querySelector('.kanban-card-date');
+    cardEl.classList.toggle('kanban-card--overdue', isOverdue);
+    if (dateEl) {
+      dateEl.classList.toggle('kanban-card-date--overdue', isOverdue);
+    }
+  }
+
+  function updateTodoPriorityColors() {
+    ['todo', 'in_progress'].forEach(function(col) {
+      var list = document.getElementById('list-' + col);
+      if (!list) return;
+      var cards = list.querySelectorAll('.kanban-card');
+      cards.forEach(function(card, idx) {
+        card.classList.remove('kanban-card--p1', 'kanban-card--p2', 'kanban-card--p3', 'kanban-card--p4');
+        card.classList.add('kanban-card--p' + Math.min(idx + 1, 4));
+      });
+    });
+    // Remove priority colors from done column
+    var doneList = document.getElementById('list-done');
+    if (doneList) {
+      doneList.querySelectorAll('.kanban-card').forEach(function(card) {
+        card.classList.remove('kanban-card--p1', 'kanban-card--p2', 'kanban-card--p3', 'kanban-card--p4');
+      });
+    }
+  }
+
+  document.querySelectorAll('.kanban-card').forEach(function(card) {
+    renderLifecycleTimes(card);
+  });
+
+  if (!isMobile) {
+    columns.forEach(function(status) {
+      var el = document.getElementById('list-' + status);
+      if (!el) return;
+
+      Sortable.create(el, {
+        group: 'kanban',
+        animation: 150,
+        ghostClass: 'kanban-card--ghost',
+        chosenClass: 'kanban-card--chosen',
+        dragClass: 'kanban-card--drag',
+        onEnd: function(evt) {
+          var cardEl = evt.item;
+          var todoId = cardEl.getAttribute('data-id');
+          var oldStatus = evt.from.id.replace('list-', '');
+          var newStatus = evt.to.id.replace('list-', '');
+
+          updateCardClasses(cardEl, newStatus);
+          updateCounts();
+          updateTodoPriorityColors();
+
+          // Collect ordered IDs for the target column
+          var targetList = evt.to;
+          var orderedIds = [];
+          targetList.querySelectorAll('.kanban-card').forEach(function(card) {
+            orderedIds.push(card.getAttribute('data-id'));
+          });
+
+          var statusRequest = Promise.resolve();
+          if (oldStatus !== newStatus) {
+            statusRequest = fetch('/kanban/todos/' + todoId + '/status', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: newStatus })
+            })
+            .then(function(response) {
+              if (!response.ok) {
+                throw new Error('Failed to update status');
+              }
+              return response.json();
+            })
+            .then(function(data) {
+              if (data && data.todo) {
+                cardEl.dataset.inProgressAt = data.todo.in_progress_at || '';
+                cardEl.dataset.completedAt = data.todo.completed_at || '';
+                renderLifecycleTimes(cardEl);
+              }
+            });
+          }
+
+          statusRequest
+          .then(function() {
+            // Save the new sort order for the target column
+            return fetch('/kanban/reorder', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ orderedIds: orderedIds })
+            });
+          })
+          .then(function(response) {
+            if (!response.ok) throw new Error('Failed to reorder');
+            // Also save order for source column if it changed
+            if (evt.from !== evt.to) {
+              var sourceIds = [];
+              evt.from.querySelectorAll('.kanban-card').forEach(function(card) {
+                sourceIds.push(card.getAttribute('data-id'));
+              });
+              return fetch('/kanban/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderedIds: sourceIds })
+              });
+            }
+          })
+          .catch(function(error) {
+            console.error('Error updating todo:', error);
+            window.location.reload();
+          });
+        }
+      });
+    });
+  }
+
+  // ---- 添加任务模态框逻辑 ----
+  var todoOverlay = document.getElementById('kanbanAddTodoOverlay');
+  var todoBtn = document.getElementById('kanbanAddTodoBtn');
+  var todoCloseBtn = document.getElementById('kanbanAddTodoCloseBtn');
+  var todoCancelBtn = document.getElementById('kanbanAddTodoCancelBtn');
+  var todoForm = todoOverlay ? todoOverlay.querySelector('form') : null;
+  var todoTitleInput = document.getElementById('kanbanTodoTitleInput');
+  var KANBAN_ADD_DRAFT_KEY = 'draft:kanban-add';
+
+  function getDraftStore() {
+    return window.DraftStorage || null;
+  }
+
+  function getKanbanAddDraft() {
+    var store = getDraftStore();
+    return store ? store.get(KANBAN_ADD_DRAFT_KEY) : {};
+  }
+
+  function updateKanbanAddDraft(partial) {
+    var store = getDraftStore();
+    if (!store) {
+      return getKanbanAddDraft();
+    }
+    return store.patch(KANBAN_ADD_DRAFT_KEY, partial);
+  }
+
+  function clearKanbanAddDraft(fields) {
+    var store = getDraftStore();
+    if (!store) {
+      return getKanbanAddDraft();
+    }
+    return store.clearFields(KANBAN_ADD_DRAFT_KEY, fields);
+  }
+
+  function syncKanbanTodoDraft() {
+    return updateKanbanAddDraft({
+      todoTitle: todoTitleInput ? todoTitleInput.value : ''
+    });
+  }
+
+  function syncKanbanNoteDraft() {
+    return updateKanbanAddDraft({
+      noteContent: noteContentInput ? noteContentInput.value : ''
+    });
+  }
+
+  function openTodoModal() {
+    var draft = getKanbanAddDraft();
+    if (todoTitleInput) {
+      todoTitleInput.value = draft.todoTitle || '';
+    }
+    todoOverlay.classList.remove('hidden');
+    setTimeout(function() { todoTitleInput.focus(); }, 100);
+  }
+  function closeTodoModal() {
+    syncKanbanTodoDraft();
+    todoOverlay.classList.add('hidden');
+    if (todoForm) {
+      todoForm.reset();
+    } else {
+      todoTitleInput.value = '';
+    }
+  }
+
+  todoBtn.addEventListener('click', openTodoModal);
+  todoCloseBtn.addEventListener('click', function(e) { e.preventDefault(); closeTodoModal(); });
+  todoCancelBtn.addEventListener('click', function(e) { e.preventDefault(); closeTodoModal(); });
+  todoOverlay.addEventListener('click', function(e) {
+    if (e.target === todoOverlay) closeTodoModal();
+  });
+  if (todoTitleInput) {
+    todoTitleInput.addEventListener('input', function() {
+      syncKanbanTodoDraft();
+    });
+  }
+  if (todoForm) {
+    todoForm.addEventListener('submit', function() {
+      clearKanbanAddDraft(['todoTitle']);
+    });
+  }
+
+  // ---- 添加笔记模态框逻辑 ----
+  var noteOverlay = document.getElementById('kanbanAddNoteOverlay');
+  var noteBtn = document.getElementById('kanbanAddNoteBtn');
+  var noteCloseBtn = document.getElementById('kanbanAddNoteCloseBtn');
+  var noteCancelBtn = document.getElementById('kanbanAddNoteCancelBtn');
+  var noteForm = noteOverlay ? noteOverlay.querySelector('form') : null;
+  var noteContentInput = document.getElementById('kanbanNoteContentInput');
+
+  function openNoteModal() {
+    var draft = getKanbanAddDraft();
+    if (noteContentInput) {
+      noteContentInput.value = draft.noteContent || '';
+    }
+    noteOverlay.classList.remove('hidden');
+    setTimeout(function() { noteContentInput.focus(); }, 100);
+  }
+  function closeNoteModal() {
+    syncKanbanNoteDraft();
+    noteOverlay.classList.add('hidden');
+    if (noteForm) {
+      noteForm.reset();
+    } else {
+      noteContentInput.value = '';
+    }
+  }
+
+  noteBtn.addEventListener('click', openNoteModal);
+  noteCloseBtn.addEventListener('click', function(e) { e.preventDefault(); closeNoteModal(); });
+  noteCancelBtn.addEventListener('click', function(e) { e.preventDefault(); closeNoteModal(); });
+  noteOverlay.addEventListener('click', function(e) {
+    if (e.target === noteOverlay) closeNoteModal();
+  });
+  if (noteContentInput) {
+    noteContentInput.addEventListener('input', function() {
+      syncKanbanNoteDraft();
+    });
+  }
+  if (noteForm) {
+    noteForm.addEventListener('submit', function() {
+      clearKanbanAddDraft(['noteContent']);
+    });
+  }
+
+  // ESC 关闭模态框
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      if (!todoOverlay.classList.contains('hidden')) closeTodoModal();
+      if (!noteOverlay.classList.contains('hidden')) closeNoteModal();
+      closeEditModal();
+    }
+  });
+
+  // ---- 编辑任务模态框逻辑 ----
+  var editOverlay = document.getElementById('kanbanEditTodoOverlay');
+  var editForm = document.getElementById('kanbanEditTodoForm');
+  var editIdInput = document.getElementById('kanbanEditTodoId');
+  var editTitleInput = document.getElementById('kanbanEditTitleInput');
+  var editDateInput = document.getElementById('kanbanEditDateInput');
+  var editDurationInput = document.getElementById('kanbanEditDurationInput');
+  var editCloseBtn = document.getElementById('kanbanEditTodoCloseBtn');
+  var editCancelBtn = document.getElementById('kanbanEditTodoCancelBtn');
+
+  function openEditModal(card) {
+    editIdInput.value = card.dataset.id;
+    editTitleInput.value = card.dataset.title;
+    editDateInput.value = card.dataset.dueDate || '';
+    editDurationInput.value = card.dataset.duration || 1;
+    editOverlay.classList.remove('hidden');
+    setTimeout(function() { editTitleInput.focus(); }, 100);
+  }
+
+  function closeEditModal() {
+    if (!editOverlay || editOverlay.classList.contains('hidden')) return;
+    editOverlay.classList.add('hidden');
+    editForm.reset();
+  }
+
+  editCloseBtn.addEventListener('click', function(e) { e.preventDefault(); closeEditModal(); });
+  editCancelBtn.addEventListener('click', function(e) { e.preventDefault(); closeEditModal(); });
+  editOverlay.addEventListener('click', function(e) {
+    if (e.target === editOverlay) closeEditModal();
+  });
+
+  editForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var todoId = editIdInput.value;
+    var payload = {
+      title: editTitleInput.value,
+      due_date: editDateInput.value,
+      project_duration: editDurationInput.value
+    };
+
+    fetch('/kanban/todos/' + todoId + '/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    .then(function(resp) {
+      if (!resp.ok) throw new Error('Update failed');
+      return resp.json();
+    })
+    .then(function(data) {
+      closeEditModal();
+      // Update card in-place
+      var card = document.querySelector('.kanban-card[data-id="' + todoId + '"]');
+      if (card && data.todo) {
+        card.dataset.title = data.todo.title;
+        card.dataset.dueDate = data.todo.due_date || '';
+        card.dataset.duration = data.todo.project_duration || 1;
+        var titleEl = card.querySelector('.kanban-card-title');
+        if (titleEl) titleEl.textContent = data.todo.title;
+        var dateEl = card.querySelector('.kanban-card-date');
+        if (data.todo.due_date) {
+          var parts = data.todo.due_date.split('-');
+          var dateText = '📅 ' + parseInt(parts[1]) + '/' + parseInt(parts[2]);
+          if (dateEl) {
+            dateEl.textContent = dateText;
+          } else {
+            var metaEl = card.querySelector('.kanban-card-bottom-right');
+            if (metaEl) {
+              var span = document.createElement('span');
+              span.className = 'kanban-card-date';
+              span.textContent = dateText;
+              metaEl.insertBefore(span, metaEl.firstChild);
+            }
+          }
+        }
+        var durEl = card.querySelector('.kanban-card-duration');
+        if (durEl) {
+          durEl.textContent = '⏱ ' + (data.todo.project_duration || 1) + '天';
+        }
+        var currentList = card.closest('.kanban-card-list');
+        var currentStatus = currentList ? currentList.id.replace('list-', '') : 'todo';
+        updateCardClasses(card, currentStatus);
+        renderLifecycleTimes(card);
+      }
+    })
+    .catch(function(err) {
+      console.error('Error updating todo:', err);
+      window.location.reload();
+    });
+  });
+
+  // 双击卡片打开编辑
+  document.querySelectorAll('.kanban-card').forEach(function(card) {
+    card.addEventListener('dblclick', function(e) {
+      e.preventDefault();
+      openEditModal(card);
+    });
+  });
+})();
+</script>
