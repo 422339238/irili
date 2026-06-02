@@ -1,5 +1,7 @@
 # 日历
 
+人生需要记录.每当我们回首往日的历程,日历希望成为你最珍贵的痕迹
+
 日历 是一个基于 Express + EJS + SQLite 的个人效率工具，包含：
 
 - 日历视图任务管理
@@ -19,6 +21,14 @@
 - `笔记`：按天保存，底层存储在 `data/notes/`
 - `设置`：包含密码修改、API key 管理，以及管理员的天气/节假日设置
 - `笔记分析 API`：给 Claude Code、Cloud、CodeChurn 等远端工具按天拉取日记内容
+
+## 界面预览
+
+![日历视图](docs/rili.png)
+
+![设置页面](docs/setting.png)
+
+![笔记编辑](docs/wriht.png)
 
 ## 技术栈
 
